@@ -14,7 +14,7 @@ import (
 
 	"git.sr.ht/~sircmpwn/go-bare"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
 )
 
 type proofParamsMarshal struct {

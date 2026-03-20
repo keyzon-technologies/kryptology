@@ -12,8 +12,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/coinbase/kryptology/pkg/core/curves/native/pasta/fp"
-	"github.com/coinbase/kryptology/pkg/core/curves/native/pasta/fq"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/pasta/fp"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/pasta/fq"
 )
 
 func TestPointPallasAddDoubleMul(t *testing.T) {

@@ -10,7 +10,7 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/coinbase/kryptology/pkg/core/curves/native"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native"
 )
 
 var k256FpInitonce sync.Once

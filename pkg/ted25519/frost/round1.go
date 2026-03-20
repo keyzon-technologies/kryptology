@@ -13,8 +13,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
 )
 
 // Round1Bcast contains values to be broadcast to all players after the completion of signing round 1.

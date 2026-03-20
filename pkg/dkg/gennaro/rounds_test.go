@@ -13,8 +13,8 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/stretchr/testify/require"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	v1 "github.com/coinbase/kryptology/pkg/sharing/v1"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	v1 "github.com/keyzon-technologies/kryptology/pkg/sharing/v1"
 )
 
 func TestParticipantRound1Works(t *testing.T) {

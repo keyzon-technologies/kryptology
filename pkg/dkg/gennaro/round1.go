@@ -10,9 +10,9 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core"
-	"github.com/coinbase/kryptology/pkg/sharing/v1"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core"
+	v1 "github.com/keyzon-technologies/kryptology/pkg/sharing/v1"
 )
 
 // Round1Bcast are the values that are broadcast to all other participants

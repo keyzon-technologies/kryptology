@@ -6,8 +6,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/ot/base/simplest"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/ot/base/simplest"
 )
 
 // ReceiverStreamCOtRun exposes an end-to-end "streaming" version of the cOT process for the receiver.

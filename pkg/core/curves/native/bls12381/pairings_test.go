@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/coinbase/kryptology/pkg/core/curves/native"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native"
 )
 
 func TestSinglePairing(t *testing.T) {

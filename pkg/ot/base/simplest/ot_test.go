@@ -14,9 +14,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/ot/base/simplest"
-	"github.com/coinbase/kryptology/pkg/ot/ottest"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/ot/base/simplest"
+	"github.com/keyzon-technologies/kryptology/pkg/ot/ottest"
 )
 
 func TestOtOnMultipleCurves(t *testing.T) {

@@ -16,7 +16,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/coinbase/kryptology/pkg/core"
+	"github.com/keyzon-technologies/kryptology/pkg/core"
 )
 
 func BenchmarkP256(b *testing.B) {
@@ -744,7 +744,7 @@ func p256SswuParams() *sswuParams {
 	}
 }
 
-//rhs of the curve equation
+// rhs of the curve equation
 func rhsP256(x *big.Int, params *elliptic.CurveParams) *big.Int {
 	f := NewField(params.P)
 	r := f.NewElement(x)

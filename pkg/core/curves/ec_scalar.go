@@ -18,9 +18,9 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/bwesterb/go-ristretto"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core"
-	"github.com/coinbase/kryptology/pkg/core/curves/native/bls12381"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/bls12381"
 )
 
 type EcScalar interface {

@@ -15,9 +15,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/sharing"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/sharing"
 )
 
 // Round1Bcast are values that are broadcast to all other participants

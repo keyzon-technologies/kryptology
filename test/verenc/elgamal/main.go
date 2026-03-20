@@ -12,9 +12,9 @@ import (
 	"encoding/hex"
 	"fmt"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/sharing/v1"
-	"github.com/coinbase/kryptology/pkg/verenc/elgamal"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	v1 "github.com/keyzon-technologies/kryptology/pkg/sharing/v1"
+	"github.com/keyzon-technologies/kryptology/pkg/verenc/elgamal"
 )
 
 func main() {

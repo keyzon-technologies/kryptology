@@ -10,8 +10,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/sharing/v1"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	v1 "github.com/keyzon-technologies/kryptology/pkg/sharing/v1"
 )
 
 type Signature = []byte

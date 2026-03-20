@@ -7,8 +7,8 @@
 package mina
 
 import (
-	"github.com/coinbase/kryptology/pkg/core/curves/native/pasta/fp"
-	"github.com/coinbase/kryptology/pkg/core/curves/native/pasta/fq"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/pasta/fp"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/pasta/fq"
 )
 
 // Handles the packing of bits and fields according to Mina spec

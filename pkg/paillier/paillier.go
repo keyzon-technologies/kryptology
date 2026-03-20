@@ -11,10 +11,10 @@
 //
 // This module provides APIs for:
 //
-//  - generating a safe keypair,
-//  - encryption and decryption,
-//  - adding two encrypted values, Enc(a) and Enc(b), and obtaining Enc(a + b), and
-//  - multiplying a plain value, a, and an encrypted value Enc(b), and obtaining Enc(a * b).
+//   - generating a safe keypair,
+//   - encryption and decryption,
+//   - adding two encrypted values, Enc(a) and Enc(b), and obtaining Enc(a + b), and
+//   - multiplying a plain value, a, and an encrypted value Enc(b), and obtaining Enc(a * b).
 //
 // The encrypted values are represented as big.Int and are serializable. This module also provides
 // JSON serialization for the PublicKey and the SecretKey.
@@ -27,8 +27,8 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core"
 )
 
 // PaillierPrimeBits is the number of bits used to generate Paillier Safe Primes.

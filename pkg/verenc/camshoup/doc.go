@@ -15,38 +15,38 @@
 //
 // Note that a key escrow scheme cannot prevent parties from double-encrypting messages under a non-escrowed key, or applying steganography to hide the fact that they are communicating altogether. The goal, therefore, is rather to prevent “dishonest” usage of public-key infrastructures, e.g., by using it to certify non-escrowed keys.
 //
-// How it works
+// # How it works
 //
 // Camenisch-Shoup Verifiable encryption is similar to RSA and based on
 // Paillier's Decision Composite Residuosity http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.112.4035&rep=rep1&type=pdf. A group of unknown order is created from two safe primes p, q where p = 2p'+1, q = 2q'+1 and p', q' are also prime and p &ne; q.
 //
 // The group parameters are computed as follows:
 //
-// 	1. Set n = p * q
-// 	2. Sample a random g' < n^2
-// 	3. Set g = g'^2n
-// 	4. Set h = n + 1
+//  1. Set n = p * q
+//  2. Sample a random g' < n^2
+//  3. Set g = g'^2n
+//  4. Set h = n + 1
 //
 // Secret keys are computed as follows
 //
-// 		1. Sample three random values x_1,x_2,x_3 < n^2/4
-// 		2. The secret key is {x_1,x_2,x_3}
+//  1. Sample three random values x_1,x_2,x_3 < n^2/4
+//  2. The secret key is {x_1,x_2,x_3}
 //
 // Public keys are computed as follows
 //
-// 		1. Compute y_1 = g^x1
-// 		2. Compute y_2 = g^x2
-// 		3. Compute y_3 = g^x3
-// 		4. The public key is {y_1, y_2, y_3}
+//  1. Compute y_1 = g^x1
+//  2. Compute y_2 = g^x2
+//  3. Compute y_3 = g^x3
+//  4. The public key is {y_1, y_2, y_3}
 //
 // The group parameters can be stored separate or together with each key.
 //
-// Proving
+// # Proving
 //
 // Verifiable encryption not only produces a ciphertext that can be decrypted, but also yields a proof that the plaintext is encrypted to a specific public key.
 // The ciphertext is represented as the triplet {u, e, v}, the proof is represented as the Schnorr proof challenge c with responses m, r.
 //
-// References
+// # References
 //
 // Practical Verifiable Encryption and Decryption of Discrete Logarithms - Jan Camenisch and Victor Shoup 2003. https://eprint.iacr.org/2002/161.pdf
 //

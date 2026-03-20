@@ -19,7 +19,7 @@ import (
 	"github.com/bwesterb/go-ristretto"
 	ed "github.com/bwesterb/go-ristretto/edwards25519"
 
-	"github.com/coinbase/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/internal"
 )
 
 type ScalarEd25519 struct {
@@ -708,8 +708,8 @@ func (p *PointEd25519) SetEdwardsPoint(pt *edwards25519.Point) *PointEd25519 {
 
 // Attempt to convert to an `EdwardsPoint`, using the supplied
 // choice of sign for the `EdwardsPoint`.
-// * `sign`: a `u8` donating the desired sign of the resulting
-//   `EdwardsPoint`.  `0` denotes positive and `1` negative.
+//   - `sign`: a `u8` donating the desired sign of the resulting
+//     `EdwardsPoint`.  `0` denotes positive and `1` negative.
 func toEdwards(u *ed.FieldElement, sign byte) *PointEd25519 {
 	one := new(ed.FieldElement).SetOne()
 	// To decompress the Montgomery u coordinate to an

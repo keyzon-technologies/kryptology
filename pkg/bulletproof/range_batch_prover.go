@@ -6,7 +6,7 @@ import (
 	"github.com/gtank/merlin"
 	"github.com/pkg/errors"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
 )
 
 // BatchProve proves that a list of scalars v are in the range n.

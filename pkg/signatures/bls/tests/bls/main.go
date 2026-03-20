@@ -15,7 +15,7 @@ import (
 	"io/ioutil"
 	"os"
 
-	bls "github.com/coinbase/kryptology/pkg/signatures/bls/bls_sig"
+	bls "github.com/keyzon-technologies/kryptology/pkg/signatures/bls/bls_sig"
 )
 
 type signOp struct {

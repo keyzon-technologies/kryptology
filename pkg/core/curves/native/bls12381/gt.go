@@ -3,8 +3,8 @@ package bls12381
 import (
 	"io"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core/curves/native"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native"
 )
 
 // GtFieldBytes is the number of bytes needed to represent this field

@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/coinbase/kryptology/pkg/core/curves/native"
-	"github.com/coinbase/kryptology/pkg/core/curves/native/k256"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/k256"
 )
 
 func TestK256PointArithmetic_Hash(t *testing.T) {

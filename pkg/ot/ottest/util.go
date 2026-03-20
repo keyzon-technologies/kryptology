@@ -5,8 +5,8 @@ package ottest
 import (
 	"github.com/pkg/errors"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/ot/base/simplest"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/ot/base/simplest"
 )
 
 // RunSimplestOT is a utility function used _only_ during various tests.

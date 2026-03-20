@@ -9,9 +9,9 @@ package frost
 import (
 	"fmt"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/sharing"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/sharing"
 )
 
 // Round2Bcast are values that are broadcast to all other participants

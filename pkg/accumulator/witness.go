@@ -12,7 +12,7 @@ import (
 
 	"git.sr.ht/~sircmpwn/go-bare"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
 )
 
 // MembershipWitness contains the witness c and the value y respect to the accumulator state.

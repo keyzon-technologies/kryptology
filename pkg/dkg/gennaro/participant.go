@@ -11,9 +11,9 @@ import (
 	"crypto/elliptic"
 	"fmt"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/sharing/v1"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	v1 "github.com/keyzon-technologies/kryptology/pkg/sharing/v1"
 )
 
 // Participant is a DKG player that contains information needed to perform DKG rounds

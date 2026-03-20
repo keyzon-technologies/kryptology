@@ -13,7 +13,7 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/stretchr/testify/require"
 
-	core "github.com/coinbase/kryptology/pkg/core/curves"
+	core "github.com/keyzon-technologies/kryptology/pkg/core/curves"
 )
 
 var (

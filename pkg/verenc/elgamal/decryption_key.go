@@ -14,9 +14,9 @@ import (
 
 	"git.sr.ht/~sircmpwn/go-bare"
 
-	"github.com/coinbase/kryptology/internal"
-	"github.com/coinbase/kryptology/pkg/core"
-	"github.com/coinbase/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/pkg/core"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
 )
 
 type decryptionKeyMarshal struct {

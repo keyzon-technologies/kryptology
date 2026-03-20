@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/coinbase/kryptology/internal"
+	"github.com/keyzon-technologies/kryptology/internal"
 )
 
 type Fp fiat_pasta_fp_montgomery_domain_field_element

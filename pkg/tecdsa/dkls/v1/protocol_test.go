@@ -20,11 +20,11 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/sha3"
 
-	"github.com/coinbase/kryptology/pkg/core/curves"
-	"github.com/coinbase/kryptology/pkg/core/protocol"
-	"github.com/coinbase/kryptology/pkg/ot/extension/kos"
-	v0 "github.com/coinbase/kryptology/pkg/tecdsa/dkls/v0"
-	"github.com/coinbase/kryptology/pkg/tecdsa/dkls/v1/dkg"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/core/protocol"
+	"github.com/keyzon-technologies/kryptology/pkg/ot/extension/kos"
+	v0 "github.com/keyzon-technologies/kryptology/pkg/tecdsa/dkls/v0"
+	"github.com/keyzon-technologies/kryptology/pkg/tecdsa/dkls/v1/dkg"
 )
 
 // For DKG bob starts first. For refresh and sign, Alice starts first.
