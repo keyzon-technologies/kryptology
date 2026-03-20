@@ -1,6 +1,6 @@
-module github.com/coinbase/kryptology
+module github.com/keyzon-technologies/kryptology
 
-go 1.17
+go 1.20
 
 require (
 	filippo.io/edwards25519 v1.0.0-rc.1
