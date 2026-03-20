@@ -9,7 +9,7 @@ package bls_sig
 import (
 	"testing"
 
-	"github.com/coinbase/kryptology/pkg/core/curves/native/bls12381"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/bls12381"
 )
 
 func generateAugSignatureG2(sk *SecretKey, msg []byte, t *testing.T) *Signature {

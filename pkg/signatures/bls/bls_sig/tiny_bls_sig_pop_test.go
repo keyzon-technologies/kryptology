@@ -12,7 +12,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/coinbase/kryptology/pkg/core/curves/native/bls12381"
+	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/bls12381"
 )
 
 const numAggregateG1 = 10
