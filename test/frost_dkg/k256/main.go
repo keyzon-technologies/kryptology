@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
 
 	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
 	dkg "github.com/keyzon-technologies/kryptology/pkg/dkg/frost"
@@ -77,7 +77,7 @@ func main() {
 		panic("verification keys are not equal")
 	}
 
-	privKey, pubKey := btcec.PrivKeyFromBytes(btcec.S256(), sk.Bytes())
+	privKey, pubKey := btcec.PrivKeyFromBytes(sk.Bytes())
 	hBytes := sha512.Sum384(msg)
 	hMsg := new(big.Int).SetBytes(hBytes[:])
 	hMsg.Mod(hMsg, btcec.S256().N)

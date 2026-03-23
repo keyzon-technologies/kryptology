@@ -16,7 +16,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/pkg/errors"
 
 	crypto "github.com/keyzon-technologies/kryptology/pkg/core/curves"

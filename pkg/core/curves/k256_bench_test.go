@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
 
 	"github.com/keyzon-technologies/kryptology/internal"
 	mod "github.com/keyzon-technologies/kryptology/pkg/core"

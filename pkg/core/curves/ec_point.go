@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/btcsuite/btcd/btcec"
+	"github.com/btcsuite/btcd/btcec/v2"
 
 	"github.com/keyzon-technologies/kryptology/internal"
 	"github.com/keyzon-technologies/kryptology/pkg/core"
