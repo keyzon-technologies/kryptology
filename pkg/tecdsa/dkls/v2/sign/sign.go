@@ -34,7 +34,21 @@ import (
 	"github.com/keyzon-technologies/kryptology/pkg/zkp/schnorr"
 )
 
-const multiplicationCount = 2
+// multiplicationCount is 3 for the additive secret-sharing variant of DKLS19.
+//
+// With additive shares (x = sk_A + sk_B, Q = (sk_A+sk_B)·G) two separate OT
+// multiplications cover each party's key contribution:
+//
+//	Multiply 0: (φ + 1/k_A) × (1/k_B)        → nonce inverse 1/k (same as before)
+//	Multiply 1: (sk_A/k_A) × (1/k_B)          → Alice's key contribution sk_A/k
+//	Multiply 2: (1/k_A)    × (sk_B/k_B)       → Bob's key contribution  sk_B/k
+//
+// Joint result:
+//
+//	δ_{s,1}+δ_{r,1}+δ_{s,2}+δ_{r,2} = (sk_A + sk_B)/k = x/k
+//
+// giving s = H(m)/k + r·x/k = (H(m) + r·x)/k  with Q = x·G. ✓
+const multiplicationCount = 3
 
 // Alice holds Alice's state across one signing execution.
 // At the end of the joint computation Alice does NOT possess the signature.
@@ -161,20 +175,34 @@ func (bob *Bob) Round2Initialize(aliceSeed [simplest.DigestSize]byte) (*SignRoun
 		return nil, errors.Wrap(err, "DKLS19 sign Round2: create multiply receiver 1")
 	}
 
+	copy(sessionID[:], bob.transcript.ExtractBytes([]byte("dkls19_multiply_recv_2"), simplest.DigestSize))
+	bob.multiplyReceivers[2], err = NewMultiplyReceiver(bob.seedOtResults, bob.curve, sessionID)
+	if err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round2: create multiply receiver 2")
+	}
+
 	out := &SignRound2Output{Seed: bobSeed}
 	bob.kB = bob.curve.Scalar.Random(rand.Reader)
 	bob.dB = bob.curve.ScalarBaseMult(bob.kB)
 	out.DB = bob.dB
 	kBInv := bob.curve.Scalar.One().Div(bob.kB)
 
+	// Multiply 0 (nonce): receiver input = 1/k_B
 	out.KosRound1Outputs[0], err = bob.multiplyReceivers[0].Round1Initialize(kBInv)
 	if err != nil {
 		return nil, errors.Wrap(err, "DKLS19 sign Round2: multiply 0 Round1")
 	}
-	// Multiplication 1 input: sk_B / k_B
-	out.KosRound1Outputs[1], err = bob.multiplyReceivers[1].Round1Initialize(bob.secretKeyShare.Mul(kBInv))
+	// Multiply 1 (Alice's key through Bob's nonce): receiver input = 1/k_B.
+	// Jointly computes (sk_A/k_A) * (1/k_B) = sk_A/k (Alice's key share of x/k).
+	out.KosRound1Outputs[1], err = bob.multiplyReceivers[1].Round1Initialize(kBInv)
 	if err != nil {
 		return nil, errors.Wrap(err, "DKLS19 sign Round2: multiply 1 Round1")
+	}
+	// Multiply 2 (Bob's key contribution): receiver input = sk_B / k_B.
+	// Jointly computes (1/k_A) * (sk_B/k_B) = sk_B/k (Bob's key share of x/k).
+	out.KosRound1Outputs[2], err = bob.multiplyReceivers[2].Round1Initialize(bob.secretKeyShare.Mul(kBInv))
+	if err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round2: multiply 2 Round1")
 	}
 	return out, nil
 }
@@ -188,7 +216,7 @@ func (bob *Bob) Round2Initialize(aliceSeed [simplest.DigestSize]byte) (*SignRoun
 //	k_A   = H(R') + k'_A      (hash-binding prevents nonce malleability)
 //	R     = k_A · D_B         (the true ECDSA nonce point)
 //
-// Alice then feeds (φ + 1/k_A) and (sk_A/k_A) into the two OLE multiplications,
+// Alice feeds (φ+1/k_A), (sk_A/k_A), and (1/k_A) into the three OLE multiplications,
 // and computes the masked consistency-check values η_φ and η_sig.
 func (alice *Alice) Round3Sign(message []byte, r2 *SignRound2Output) (*SignRound3Output, error) {
 	alice.transcript.AppendMessage([]byte("dkls19_sign_sid_bob"), r2.Seed[:])
@@ -205,6 +233,11 @@ func (alice *Alice) Round3Sign(message []byte, r2 *SignRound2Output) (*SignRound
 	copy(sessionID[:], alice.transcript.ExtractBytes([]byte("dkls19_multiply_recv_1"), simplest.DigestSize))
 	if multiplySenders[1], err = NewMultiplySender(alice.seedOtResults, alice.curve, sessionID); err != nil {
 		return nil, errors.Wrap(err, "DKLS19 sign Round3: create multiply sender 1")
+	}
+
+	copy(sessionID[:], alice.transcript.ExtractBytes([]byte("dkls19_multiply_recv_2"), simplest.DigestSize))
+	if multiplySenders[2], err = NewMultiplySender(alice.seedOtResults, alice.curve, sessionID); err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round3: create multiply sender 2")
 	}
 
 	out := &SignRound3Output{}
@@ -234,18 +267,28 @@ func (alice *Alice) Round3Sign(message []byte, r2 *SignRound2Output) (*SignRound
 	phi := alice.curve.Scalar.Random(rand.Reader)
 	kAInv := alice.curve.Scalar.One().Div(kA)
 
-	// Multiplication 0: input = φ + 1/k_A.
+	// Multiply 0 (nonce): sender input = φ + 1/k_A (unchanged from DKLS19 original).
+	// Joint result: (φ + 1/k_A)/k_B → θ = 1/(k_A·k_B) after φ cancellation.
 	out.MultiplyRound2Outputs[0], err = multiplySenders[0].Round2Multiply(
 		phi.Add(kAInv), r2.KosRound1Outputs[0])
 	if err != nil {
 		return nil, errors.Wrap(err, "DKLS19 sign Round3: multiply 0 Round2")
 	}
 
-	// Multiplication 1: input = sk_A / k_A.
+	// Multiply 1 (Alice's key contribution): sender input = sk_A / k_A.
+	// Bob's receiver has 1/k_B → joint result: sk_A/(k_A·k_B) = sk_A/k.
 	out.MultiplyRound2Outputs[1], err = multiplySenders[1].Round2Multiply(
 		alice.secretKeyShare.Mul(kAInv), r2.KosRound1Outputs[1])
 	if err != nil {
 		return nil, errors.Wrap(err, "DKLS19 sign Round3: multiply 1 Round2")
+	}
+
+	// Multiply 2 (Bob's key contribution): sender input = 1/k_A.
+	// Bob's receiver has sk_B/k_B → joint result: sk_B/(k_A·k_B) = sk_B/k.
+	out.MultiplyRound2Outputs[2], err = multiplySenders[2].Round2Multiply(
+		kAInv, r2.KosRound1Outputs[2])
+	if err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round3: multiply 2 Round2")
 	}
 
 	// --- Compute η_φ (nonce consistency check) ---
@@ -280,13 +323,16 @@ func (alice *Alice) Round3Sign(message []byte, r2 *SignRound2Output) (*SignRound
 		return nil, errors.Wrap(err, "DKLS19 sign Round3: R_x scalar")
 	}
 
-	// sig_A = H(m) · δ_{s,0} + R_x · δ_{s,1}
-	sigA := hm.Mul(multiplySenders[0].outputAdditiveShare).Add(
-		rX.Mul(multiplySenders[1].outputAdditiveShare))
+	// Additive key contributions: δ_{s,1} + δ_{s,2} = sk_A/k + sk_B/k (Alice's sender shares).
+	keyShareSenderSum := multiplySenders[1].outputAdditiveShare.Add(multiplySenders[2].outputAdditiveShare)
 
-	// γ_2 = Q · δ_{s,0} − δ_{s,1} · G
+	// sig_A = H(m) · δ_{s,0} + R_x · (δ_{s,1} + δ_{s,2})
+	sigA := hm.Mul(multiplySenders[0].outputAdditiveShare).Add(rX.Mul(keyShareSenderSum))
+
+	// γ_2 = Q · δ_{s,0} − (δ_{s,1} + δ_{s,2}) · G
+	// Bob will compute (δ_{r,1}+δ_{r,2})·G − θ·Q, and both should give the same point.
 	gamma2 := alice.publicKey.Mul(multiplySenders[0].outputAdditiveShare)
-	gamma2 = gamma2.Add(alice.curve.ScalarBaseMult(multiplySenders[1].outputAdditiveShare.Neg()))
+	gamma2 = gamma2.Add(alice.curve.ScalarBaseMult(keyShareSenderSum.Neg()))
 
 	gamma2HashBytes := sha3.Sum256(gamma2.ToAffineCompressed())
 	gamma2Hash, err := alice.curve.Scalar.SetBytes(gamma2HashBytes[:])
@@ -308,6 +354,9 @@ func (bob *Bob) Round4Final(message []byte, r3 *SignRound3Output) error {
 	}
 	if err := bob.multiplyReceivers[1].Round3Multiply(r3.MultiplyRound2Outputs[1]); err != nil {
 		return errors.Wrap(err, "DKLS19 sign Round4: multiply 1 Round3")
+	}
+	if err := bob.multiplyReceivers[2].Round3Multiply(r3.MultiplyRound2Outputs[2]); err != nil {
+		return errors.Wrap(err, "DKLS19 sign Round4: multiply 2 Round3")
 	}
 
 	// Reconstruct R = H(R') · D_B + R'  (Bob mirrors Alice's hash-binding).
@@ -368,11 +417,16 @@ func (bob *Bob) Round4Final(message []byte, r3 *SignRound3Output) error {
 		return errors.Wrap(err, "DKLS19 sign Round4: R as scalar")
 	}
 
-	// sig_B = H(m) · θ + R_x · δ_{r,1}
-	sigB := hm.Mul(theta).Add(capitalR.Mul(bob.multiplyReceivers[1].outputAdditiveShare))
+	// Additive key contributions: δ_{r,1} + δ_{r,2} = sk_A/k + sk_B/k (Bob's receiver shares).
+	keyShareReceiverSum := bob.multiplyReceivers[1].outputAdditiveShare.Add(bob.multiplyReceivers[2].outputAdditiveShare)
+
+	// sig_B = H(m) · θ + R_x · (δ_{r,1} + δ_{r,2})
+	sigB := hm.Mul(theta).Add(capitalR.Mul(keyShareReceiverSum))
 
 	// Recover sig_A from η_sig.
-	gamma2 := bob.curve.ScalarBaseMult(bob.multiplyReceivers[1].outputAdditiveShare)
+	// γ_2 = (δ_{r,1} + δ_{r,2}) · G − θ · Q
+	// Alice computed: Q · δ_{s,0} − (δ_{s,1}+δ_{s,2}) · G; by the OLE guarantee these are equal.
+	gamma2 := bob.curve.ScalarBaseMult(keyShareReceiverSum)
 	gamma2 = gamma2.Add(bob.publicKey.Mul(theta.Neg()))
 	gamma2HashBytes := sha3.Sum256(gamma2.ToAffineCompressed())
 	gamma2Hash, err := bob.curve.Scalar.SetBytes(gamma2HashBytes[:])

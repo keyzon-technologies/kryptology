@@ -72,18 +72,17 @@ var (
 
 // ── DKG constructors ──────────────────────────────────────────────────────────
 
-// NewAliceDkg creates a DKLS19 DKG iterator for Alice.
-// Alice is the responder; she waits for Bob's seed before acting.
-func NewAliceDkg(curve *curves.Curve, version uint) *AliceDkg {
-	a := &AliceDkg{Alice: dkg.NewAlice(curve)}
-	a.steps = []func(*protocol.Message) (*protocol.Message, error){
+// newAliceDkgFromAlice is the shared constructor logic for AliceDkg instances.
+func newAliceDkgFromAlice(a *dkg.Alice, version uint) *AliceDkg {
+	ad := &AliceDkg{Alice: a}
+	ad.steps = []func(*protocol.Message) (*protocol.Message, error){
 		// Step 1: receive Bob's seed → commit to Alice's Schnorr proof.
 		func(input *protocol.Message) (*protocol.Message, error) {
 			bobSeed, err := decodeDkgRound1Output(input)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			r2, err := a.Round2CommitToProof(bobSeed)
+			r2, err := ad.Round2CommitToProof(bobSeed)
 			if err != nil {
 				return nil, err
 			}
@@ -95,7 +94,7 @@ func NewAliceDkg(curve *curves.Curve, version uint) *AliceDkg {
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			aliceProof, err := a.Round4VerifyAndReveal(proof)
+			aliceProof, err := ad.Round4VerifyAndReveal(proof)
 			if err != nil {
 				return nil, err
 			}
@@ -107,7 +106,7 @@ func NewAliceDkg(curve *curves.Curve, version uint) *AliceDkg {
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			choices, err := a.Round6OTRound2(proof)
+			choices, err := ad.Round6OTRound2(proof)
 			if err != nil {
 				return nil, err
 			}
@@ -119,7 +118,7 @@ func NewAliceDkg(curve *curves.Curve, version uint) *AliceDkg {
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			responses, err := a.Round8OTRound4(challenge)
+			responses, err := ad.Round8OTRound4(challenge)
 			if err != nil {
 				return nil, err
 			}
@@ -131,13 +130,97 @@ func NewAliceDkg(curve *curves.Curve, version uint) *AliceDkg {
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			if err := a.Round10OTRound6(openings); err != nil {
+			if err := ad.Round10OTRound6(openings); err != nil {
 				return nil, err
 			}
 			return nil, nil
 		},
 	}
-	return a
+	return ad
+}
+
+// newBobDkgFromBob is the shared constructor logic for BobDkg instances.
+func newBobDkgFromBob(b *dkg.Bob, version uint) *BobDkg {
+	bd := &BobDkg{Bob: b}
+	bd.steps = []func(*protocol.Message) (*protocol.Message, error){
+		// Step 1: no input → generate and send random seed.
+		func(*protocol.Message) (*protocol.Message, error) {
+			seed, err := bd.Round1GenerateRandomSeed()
+			if err != nil {
+				return nil, err
+			}
+			return encodeDkgRound1Output(seed, version)
+		},
+		// Step 2: receive Alice's commitment → prove Bob's key share.
+		func(input *protocol.Message) (*protocol.Message, error) {
+			r2, err := decodeDkgRound2Output(input)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			bobProof, err := bd.Round3SchnorrProve(r2)
+			if err != nil {
+				return nil, err
+			}
+			return encodeDkgRound3Output(bobProof, version)
+		},
+		// Step 3: receive Alice's revealed proof → verify, decommit, start OT.
+		func(input *protocol.Message) (*protocol.Message, error) {
+			proof, err := decodeDkgRound4Output(input)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			otR1, err := bd.Round5DecommitAndStartOT(proof)
+			if err != nil {
+				return nil, err
+			}
+			return encodeDkgRound5Output(otR1, version)
+		},
+		// Step 4: receive OT Round2 masked choices → send OT challenges.
+		func(input *protocol.Message) (*protocol.Message, error) {
+			choices, err := decodeDkgRound6Output(input)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			challenge, err := bd.Round7OTRound3(choices)
+			if err != nil {
+				return nil, err
+			}
+			return encodeDkgRound7Output(challenge, version)
+		},
+		// Step 5: receive OT responses → verify and send openings.
+		func(input *protocol.Message) (*protocol.Message, error) {
+			responses, err := decodeDkgRound8Output(input)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			openings, err := bd.Round9OTRound5(responses)
+			if err != nil {
+				return nil, err
+			}
+			return encodeDkgRound9Output(openings, version)
+		},
+	}
+	return bd
+}
+
+// NewAliceDkg creates a DKLS19 DKG iterator for Alice.
+// Alice is the responder; she waits for Bob's seed before acting.
+func NewAliceDkg(curve *curves.Curve, version uint) *AliceDkg {
+	return newAliceDkgFromAlice(dkg.NewAlice(curve), version)
+}
+
+// NewAliceDkgWithSecret creates a DKLS19 DKG iterator for Alice using a pre-existing
+// secret key share instead of generating a fresh random one.
+//
+// This is designed for the Shamir+DKLS19 2-of-n hybrid: after a group DKG (e.g. FROST)
+// produces Shamir shares, the caller computes the Lagrange-weighted share for this pair
+// and passes it here. The DKLS19 DKG then establishes the OT correlations required for
+// future signing sessions, while the resulting public key matches the group public key.
+//
+// secretShare must equal λ_alice · s_alice for the signing pair {alice, bob},
+// where λ_alice is Alice's Lagrange coefficient and s_alice is her Shamir share.
+func NewAliceDkgWithSecret(curve *curves.Curve, secretShare curves.Scalar, version uint) *AliceDkg {
+	return newAliceDkgFromAlice(dkg.NewAliceWithSecret(curve, secretShare), version)
 }
 
 // Result encodes Alice's DKG output for use in subsequent signing sessions.
@@ -158,66 +241,18 @@ func (a *AliceDkg) Result(version uint) (*protocol.Message, error) {
 // NewBobDkg creates a DKLS19 DKG iterator for Bob.
 // Bob is the initiator; his first step requires no input.
 func NewBobDkg(curve *curves.Curve, version uint) *BobDkg {
-	b := &BobDkg{Bob: dkg.NewBob(curve)}
-	b.steps = []func(*protocol.Message) (*protocol.Message, error){
-		// Step 1: no input → generate and send random seed.
-		func(*protocol.Message) (*protocol.Message, error) {
-			seed, err := b.Round1GenerateRandomSeed()
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound1Output(seed, version)
-		},
-		// Step 2: receive Alice's commitment → prove Bob's key share.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			r2, err := decodeDkgRound2Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			bobProof, err := b.Round3SchnorrProve(r2)
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound3Output(bobProof, version)
-		},
-		// Step 3: receive Alice's revealed proof → verify, decommit, start OT.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			proof, err := decodeDkgRound4Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			otR1, err := b.Round5DecommitAndStartOT(proof)
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound5Output(otR1, version)
-		},
-		// Step 4: receive OT Round2 masked choices → send OT challenges.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			choices, err := decodeDkgRound6Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			challenge, err := b.Round7OTRound3(choices)
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound7Output(challenge, version)
-		},
-		// Step 5: receive OT responses → verify and send openings.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			responses, err := decodeDkgRound8Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			openings, err := b.Round9OTRound5(responses)
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound9Output(openings, version)
-		},
-	}
-	return b
+	return newBobDkgFromBob(dkg.NewBob(curve), version)
+}
+
+// NewBobDkgWithSecret creates a DKLS19 DKG iterator for Bob using a pre-existing
+// secret key share instead of generating a fresh random one.
+//
+// This is the Bob-side counterpart of NewAliceDkgWithSecret; see that function's
+// documentation for the intended use case.
+//
+// secretShare must equal λ_bob · s_bob for the signing pair {alice, bob}.
+func NewBobDkgWithSecret(curve *curves.Curve, secretShare curves.Scalar, version uint) *BobDkg {
+	return newBobDkgFromBob(dkg.NewBobWithSecret(curve, secretShare), version)
 }
 
 // Result encodes Bob's DKG output for use in subsequent signing sessions.
@@ -254,6 +289,60 @@ func NewAliceSign(curve *curves.Curve, hash hash.Hash, message []byte, dkgResult
 			return encodeSignRound1Output(seed, version)
 		},
 		// Step 2: receive Bob's SignRound2Output → produce Alice's sign message.
+		func(input *protocol.Message) (*protocol.Message, error) {
+			r2, err := decodeSignRound2Output(input)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			r3, err := a.Round3Sign(message, r2)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return encodeSignRound3Output(r3, version)
+		},
+	}
+	return a, nil
+}
+
+// NewAliceSignWithTweak creates a DKLS19 signing iterator for Alice with a BIP32 scalar
+// tweak applied to her secret key share before signing.
+//
+// The tweak implements BIP32 child-key derivation at the MPC layer without requiring a
+// new DKG session: Alice's effective share becomes sk_A' = sk_A + tweak.  The caller
+// must also pass childPublicKey — the BIP32-derived child public key — so that the
+// signing protocol's internal ECDSA verification uses the correct public key.
+//
+// Intended usage:
+//
+//	tweak, childPubKey, err := bip32.DeriveChildKey(aggregatedPubKey, path)
+//	aliceSign, err := NewAliceSignWithTweak(curve, hash, msg, dkgResult, tweak, childPubKey, version)
+func NewAliceSignWithTweak(
+	curve *curves.Curve,
+	hash hash.Hash,
+	message []byte,
+	dkgResult *protocol.Message,
+	tweak curves.Scalar,
+	childPublicKey curves.Point,
+	version uint,
+) (*AliceSign, error) {
+	aliceOut, err := DecodeAliceDkgResult(dkgResult)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	tweakedOut := &dkg.AliceOutput{
+		PublicKey:      childPublicKey,
+		SecretKeyShare: aliceOut.SecretKeyShare.Add(tweak),
+		SeedOtResult:   aliceOut.SeedOtResult,
+	}
+	a := &AliceSign{Alice: sign.NewAlice(curve, hash, tweakedOut)}
+	a.steps = []func(*protocol.Message) (*protocol.Message, error){
+		func(*protocol.Message) (*protocol.Message, error) {
+			seed, err := a.Round1GenerateRandomSeed()
+			if err != nil {
+				return nil, err
+			}
+			return encodeSignRound1Output(seed, version)
+		},
 		func(input *protocol.Message) (*protocol.Message, error) {
 			r2, err := decodeSignRound2Output(input)
 			if err != nil {
@@ -309,6 +398,61 @@ func NewBobSign(curve *curves.Curve, hash hash.Hash, message []byte, dkgResult *
 	return b, nil
 }
 
+// NewBobSignWithTweak creates a DKLS19 signing iterator for Bob with a BIP32 child
+// public key override.
+//
+// In the additive secret-sharing scheme (x = sk_A + sk_B), only Alice adds the scalar
+// tweak to her share (sk_A' = sk_A + tweak).  Bob's share remains unchanged.  The
+// joint child key is then x' = sk_A' + sk_B = x + tweak, as required by BIP32.
+//
+// The caller must pass the correct childPublicKey (= x'·G) so that Bob's internal
+// ECDSA verification uses the derived child key and not the master key.
+func NewBobSignWithTweak(
+	curve *curves.Curve,
+	hash hash.Hash,
+	message []byte,
+	dkgResult *protocol.Message,
+	tweak curves.Scalar,
+	childPublicKey curves.Point,
+	version uint,
+) (*BobSign, error) {
+	bobOut, err := DecodeBobDkgResult(dkgResult)
+	if err != nil {
+		return nil, errors.WithStack(err)
+	}
+	// Bob's key share is NOT tweaked; only Alice adds the scalar tweak.
+	tweakedOut := &dkg.BobOutput{
+		PublicKey:      childPublicKey,
+		SecretKeyShare: bobOut.SecretKeyShare,
+		SeedOtResult:   bobOut.SeedOtResult,
+	}
+	b := &BobSign{Bob: sign.NewBob(curve, hash, tweakedOut)}
+	b.steps = []func(*protocol.Message) (*protocol.Message, error){
+		func(input *protocol.Message) (*protocol.Message, error) {
+			seed, err := decodeSignRound1Output(input)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			r2, err := b.Round2Initialize(seed)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return encodeSignRound2Output(r2, version)
+		},
+		func(input *protocol.Message) (*protocol.Message, error) {
+			r3, err := decodeSignRound3Output(input)
+			if err != nil {
+				return nil, errors.WithStack(err)
+			}
+			if err = b.Round4Final(message, r3); err != nil {
+				return nil, errors.WithStack(err)
+			}
+			return nil, nil
+		},
+	}
+	return b, nil
+}
+
 // Result returns the completed ECDSA signature produced by Bob.
 func (b *BobSign) Result(version uint) (*protocol.Message, error) {
 	if !b.complete() {
@@ -330,9 +474,9 @@ func NewAliceRefresh(curve *curves.Curve, dkgResult *protocol.Message, version u
 	}
 	a := &AliceRefresh{Alice: refresh.NewAlice(curve, aliceOut)}
 	a.steps = []func(*protocol.Message) (*protocol.Message, error){
-		// Step 1: no input → send Alice's multiplier k_A.
+		// Step 1: no input → send Alice's addend k_A.
 		func(*protocol.Message) (*protocol.Message, error) {
-			kA, err := a.Round1AliceMultiplier()
+			kA, err := a.Round1AliceAddend()
 			if err != nil {
 				return nil, err
 			}
@@ -400,13 +544,13 @@ func NewBobRefresh(curve *curves.Curve, dkgResult *protocol.Message, version uin
 	}
 	b := &BobRefresh{Bob: refresh.NewBob(curve, bobOut)}
 	b.steps = []func(*protocol.Message) (*protocol.Message, error){
-		// Step 1: receive Alice's multiplier k_A → update share, start OT, reply.
+		// Step 1: receive Alice's addend k_A → update share, start OT, reply.
 		func(input *protocol.Message) (*protocol.Message, error) {
 			kA, err := decodeRefreshRound1Output(input)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			r2, err := b.Round2BobMultiplierAndOT(kA)
+			r2, err := b.Round2BobAddendAndOT(kA)
 			if err != nil {
 				return nil, err
 			}

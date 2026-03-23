@@ -8,16 +8,16 @@
 // The refresh protocol lets Alice and Bob rotate their additive key shares
 // and re-seed the correlated OT material without changing the joint public key.
 //
-// Protocol outline (mirrors DKLs18 refresh with updated transcript labels):
-//  1. Alice samples k_A ← F_q, writes it to the transcript, and sends it to Bob.
+// Protocol outline (additive refresh for the additive secret-sharing variant):
+//  1. Alice samples k ← F_q, writes it to the transcript, and sends it to Bob.
 //  2. Bob receives k_A, samples k_B ← F_q, writes both to the transcript, reads
-//     the common multiplier k = Transcript("refresh_multiplier"), and updates:
-//     sk_B ← sk_B · k.  Sends k_B to Alice.
-//  3. Alice writes k_B, reads k, and updates: sk_A ← sk_A · k^{−1}.
+//     the common addend k = Transcript("refresh_addend"), and updates:
+//     sk_B ← sk_B + k.  Sends k_B to Alice.
+//  3. Alice writes k_B, reads k, and updates: sk_A ← sk_A − k.
 //  4. Both parties redo the seed OT (identical to the DKG seed OT phase).
 //
-// Invariant: sk_A' · sk_B' = (sk_A · k^{−1}) · (sk_B · k) = sk_A · sk_B,
-// so the joint public key Q = sk_A · sk_B · G is unchanged.
+// Invariant: sk_A' + sk_B' = (sk_A − k) + (sk_B + k) = sk_A + sk_B = x,
+// so the joint public key Q = (sk_A + sk_B)·G is unchanged.
 package refresh
 
 import (
@@ -56,8 +56,8 @@ type RefreshRound2Output struct {
 	// SeedOTRound1Output is the Schnorr proof from the sender side of the new seed OT.
 	SeedOTRound1Output *schnorr.Proof
 
-	// BobMultiplier is k_B, Bob's random contribution to the refresh.
-	BobMultiplier curves.Scalar
+	// BobAddend is k_B, Bob's random contribution to the refresh transcript.
+	BobAddend curves.Scalar
 }
 
 // NewAlice creates an Alice refresh instance from existing DKG output.
@@ -88,35 +88,32 @@ func NewBob(curve *curves.Curve, dkgOutput *dkg.BobOutput) *Bob {
 	}
 }
 
-// Round1AliceMultiplier is Alice's opening move.
+// Round1AliceAddend is Alice's opening move.
 // She samples k_A ← F_q, appends it to the transcript, and sends it to Bob.
-func (alice *Alice) Round1AliceMultiplier() (curves.Scalar, error) {
+func (alice *Alice) Round1AliceAddend() (curves.Scalar, error) {
 	kA := alice.curve.Scalar.Random(rand.Reader)
 	alice.transcript.AppendMessage([]byte("dkls19_refresh_kA"), kA.Bytes())
 	return kA, nil
 }
 
-// Round2BobMultiplierAndOT is Bob's response.
-// Bob appends k_A, samples k_B, derives the common multiplier k, updates his
-// key share, and kicks off the new seed OT.
-func (bob *Bob) Round2BobMultiplierAndOT(kA curves.Scalar) (*RefreshRound2Output, error) {
+// Round2BobAddendAndOT is Bob's response.
+// Bob appends k_A, samples k_B, derives the common addend k, updates his
+// key share as sk_B ← sk_B + k, and kicks off the new seed OT.
+func (bob *Bob) Round2BobAddendAndOT(kA curves.Scalar) (*RefreshRound2Output, error) {
 	bob.transcript.AppendMessage([]byte("dkls19_refresh_kA"), kA.Bytes())
 
 	kB := bob.curve.Scalar.Random(rand.Reader)
 	bob.transcript.AppendMessage([]byte("dkls19_refresh_kB"), kB.Bytes())
 
-	// Derive the common multiplier k from the transcript.
-	kBytes := bob.transcript.ExtractBytes([]byte("dkls19_refresh_multiplier"), simplest.DigestSize)
+	// Derive the common addend k from the transcript.
+	kBytes := bob.transcript.ExtractBytes([]byte("dkls19_refresh_addend"), simplest.DigestSize)
 	k, err := bob.curve.Scalar.SetBytes(kBytes)
 	if err != nil {
 		return nil, errors.Wrap(err, "DKLS19 refresh Round2: derive k")
 	}
 
-	if k.IsZero() {
-		return nil, errors.New("DKLS19 refresh Round2: derived multiplier k is zero")
-	}
-	// sk_B ← sk_B · k
-	bob.secretKeyShare = bob.secretKeyShare.Mul(k)
+	// sk_B ← sk_B + k
+	bob.secretKeyShare = bob.secretKeyShare.Add(k)
 
 	// Initialise new seed OT with a fresh session ID.
 	otSessionID := [simplest.DigestSize]byte{}
@@ -132,27 +129,24 @@ func (bob *Bob) Round2BobMultiplierAndOT(kA curves.Scalar) (*RefreshRound2Output
 	}
 	return &RefreshRound2Output{
 		SeedOTRound1Output: otR1,
-		BobMultiplier:      kB,
+		BobAddend:          kB,
 	}, nil
 }
 
 // Round3AliceUpdateAndOT is Alice's reply.
-// She appends k_B, derives k, updates her key share as sk_A ← sk_A · k^{−1},
+// She appends k_B, derives k, updates her key share as sk_A ← sk_A − k,
 // and advances the seed OT.
 func (alice *Alice) Round3AliceUpdateAndOT(r2 *RefreshRound2Output) ([]simplest.ReceiversMaskedChoices, error) {
-	alice.transcript.AppendMessage([]byte("dkls19_refresh_kB"), r2.BobMultiplier.Bytes())
+	alice.transcript.AppendMessage([]byte("dkls19_refresh_kB"), r2.BobAddend.Bytes())
 
-	kBytes := alice.transcript.ExtractBytes([]byte("dkls19_refresh_multiplier"), simplest.DigestSize)
+	kBytes := alice.transcript.ExtractBytes([]byte("dkls19_refresh_addend"), simplest.DigestSize)
 	k, err := alice.curve.Scalar.SetBytes(kBytes)
 	if err != nil {
 		return nil, errors.Wrap(err, "DKLS19 refresh Round3: derive k")
 	}
 
-	if k.IsZero() {
-		return nil, errors.New("DKLS19 refresh Round3: derived multiplier k is zero")
-	}
-	// sk_A ← sk_A · k^{−1}  so that sk_A' · sk_B' = sk_A · sk_B.
-	alice.secretKeyShare = alice.secretKeyShare.Mul(alice.curve.Scalar.One().Div(k))
+	// sk_A ← sk_A − k  so that sk_A' + sk_B' = sk_A + sk_B = x.
+	alice.secretKeyShare = alice.secretKeyShare.Sub(k)
 
 	otSessionID := [simplest.DigestSize]byte{}
 	copy(otSessionID[:], alice.transcript.ExtractBytes([]byte("dkls19_refresh_ot_sid"), simplest.DigestSize))

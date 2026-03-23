@@ -100,6 +100,27 @@ func NewAlice(curve *curves.Curve) *Alice {
 	}
 }
 
+// NewAliceWithSecret creates an Alice instance that uses secretShare as its secret key
+// contribution instead of generating a fresh random one. This is used in 2-of-n
+// threshold setups (Shamir+DKLS19 hybrid): each node already holds a Lagrange-weighted
+// Shamir share of the master secret, and the DKLS19 DKG is used only to establish the
+// OT correlations needed for future signing sessions.
+//
+// The caller is responsible for ensuring that secretShare + Bob's corresponding share
+// equals the master secret key x such that Q = x·G is the desired joint public key.
+//
+// Returns nil if curve or secretShare is nil.
+func NewAliceWithSecret(curve *curves.Curve, secretShare curves.Scalar) *Alice {
+	if curve == nil || secretShare == nil {
+		return nil
+	}
+	return &Alice{
+		curve:          curve,
+		transcript:     merlin.NewTranscript("DKLS19_DKG_v2"),
+		secretKeyShare: secretShare,
+	}
+}
+
 // NewBob creates a fresh Bob instance ready to begin DKG.
 // Returns nil if curve is nil.
 func NewBob(curve *curves.Curve) *Bob {
@@ -109,6 +130,23 @@ func NewBob(curve *curves.Curve) *Bob {
 	return &Bob{
 		curve:      curve,
 		transcript: merlin.NewTranscript("DKLS19_DKG_v2"),
+	}
+}
+
+// NewBobWithSecret creates a Bob instance that uses secretShare as its secret key
+// contribution instead of generating a fresh random one. This is the Bob-side
+// counterpart of NewAliceWithSecret; see that function's documentation for the
+// intended use case and caller responsibilities.
+//
+// Returns nil if curve or secretShare is nil.
+func NewBobWithSecret(curve *curves.Curve, secretShare curves.Scalar) *Bob {
+	if curve == nil || secretShare == nil {
+		return nil
+	}
+	return &Bob{
+		curve:          curve,
+		transcript:     merlin.NewTranscript("DKLS19_DKG_v2"),
+		secretKeyShare: secretShare,
 	}
 }
 
@@ -151,7 +189,11 @@ func (alice *Alice) Round2CommitToProof(bobSeed [simplest.DigestSize]byte) (*Rou
 	schnorrID := [simplest.DigestSize]byte{}
 	copy(schnorrID[:], alice.transcript.ExtractBytes([]byte("dkls19_schnorr_alice"), simplest.DigestSize))
 
-	alice.secretKeyShare = alice.curve.Scalar.Random(rand.Reader)
+	// Use an externally-provided secret share when one was supplied (e.g. for the
+	// Shamir+DKLS19 2-of-n hybrid); otherwise generate a fresh random share.
+	if alice.secretKeyShare == nil {
+		alice.secretKeyShare = alice.curve.Scalar.Random(rand.Reader)
+	}
 	alice.prover = schnorr.NewProver(alice.curve, nil, schnorrID[:])
 
 	var commitment schnorr.Commitment
@@ -188,7 +230,11 @@ func (bob *Bob) Round3SchnorrProve(r2 *Round2Output) (*schnorr.Proof, error) {
 	schnorrID := [simplest.DigestSize]byte{}
 	copy(schnorrID[:], bob.transcript.ExtractBytes([]byte("dkls19_schnorr_bob"), simplest.DigestSize))
 
-	bob.secretKeyShare = bob.curve.Scalar.Random(rand.Reader)
+	// Use an externally-provided secret share when one was supplied (e.g. for the
+	// Shamir+DKLS19 2-of-n hybrid); otherwise generate a fresh random share.
+	if bob.secretKeyShare == nil {
+		bob.secretKeyShare = bob.curve.Scalar.Random(rand.Reader)
+	}
 	bob.prover = schnorr.NewProver(bob.curve, nil, schnorrID[:])
 
 	proof, err := bob.prover.Prove(bob.secretKeyShare)
@@ -207,8 +253,9 @@ func (alice *Alice) Round4VerifyAndReveal(bobProof *schnorr.Proof) (*schnorr.Pro
 	if err := schnorr.Verify(bobProof, alice.curve, nil, schnorrID[:]); err != nil {
 		return nil, errors.Wrap(err, "DKLS19 DKG Round4: Alice failed to verify Bob's Schnorr proof")
 	}
-	// Q = x_A · (x_B · G) — Alice computes the joint public key.
-	alice.publicKey = bobProof.Statement.Mul(alice.secretKeyShare)
+	// Q = x_A·G + x_B·G = (x_A + x_B)·G — additive secret sharing.
+	// bobProof.Statement = x_B·G (Bob's Schnorr statement).
+	alice.publicKey = alice.curve.ScalarBaseMult(alice.secretKeyShare).Add(bobProof.Statement)
 	return alice.proof, nil
 }
 
@@ -218,7 +265,9 @@ func (bob *Bob) Round5DecommitAndStartOT(aliceProof *schnorr.Proof) (*schnorr.Pr
 	if err := schnorr.DecommitVerify(aliceProof, bob.aliceCommitment, bob.curve, nil, bob.aliceSalt[:]); err != nil {
 		return nil, errors.Wrap(err, "DKLS19 DKG Round5: Bob failed to verify Alice's decommitment")
 	}
-	bob.publicKey = aliceProof.Statement.Mul(bob.secretKeyShare)
+	// Q = x_A·G + x_B·G = (x_A + x_B)·G — additive secret sharing.
+	// aliceProof.Statement = x_A·G (Alice's Schnorr statement).
+	bob.publicKey = aliceProof.Statement.Add(bob.curve.ScalarBaseMult(bob.secretKeyShare))
 
 	seedOTRound1, err := bob.sender.Round1ComputeAndZkpToPublicKey()
 	if err != nil {
