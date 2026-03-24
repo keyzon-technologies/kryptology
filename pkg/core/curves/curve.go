@@ -16,24 +16,11 @@ import (
 	"math/big"
 	"sync"
 
-	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/bls12381"
 )
 
 var (
 	k256Initonce sync.Once
 	k256         Curve
-
-	bls12381g1Initonce sync.Once
-	bls12381g1         Curve
-
-	bls12381g2Initonce sync.Once
-	bls12381g2         Curve
-
-	bls12377g1Initonce sync.Once
-	bls12377g1         Curve
-
-	bls12377g2Initonce sync.Once
-	bls12377g2         Curve
 
 	p256Initonce sync.Once
 	p256         Curve
@@ -46,16 +33,10 @@ var (
 )
 
 const (
-	K256Name       = "secp256k1"
-	BLS12381G1Name = "BLS12381G1"
-	BLS12381G2Name = "BLS12381G2"
-	BLS12831Name   = "BLS12831"
-	P256Name       = "P-256"
-	ED25519Name    = "ed25519"
-	PallasName     = "pallas"
-	BLS12377G1Name = "BLS12377G1"
-	BLS12377G2Name = "BLS12377G2"
-	BLS12377Name   = "BLS12377"
+	K256Name    = "secp256k1"
+	P256Name    = "P-256"
+	ED25519Name = "ed25519"
+	PallasName  = "pallas"
 )
 
 const scalarBytes = 32
@@ -125,11 +106,6 @@ type Scalar interface {
 	SetBytesWide(bytes []byte) (Scalar, error)
 	// Clone returns a cloned Scalar of this value
 	Clone() Scalar
-}
-
-type PairingScalar interface {
-	Scalar
-	SetPoint(p Point) PairingScalar
 }
 
 func unmarshalScalar(input []byte) (*Curve, []byte, error) {
@@ -256,13 +232,6 @@ type Point interface {
 	FromAffineUncompressed(bytes []byte) (Point, error)
 	CurveName() string
 	SumOfProducts(points []Point, scalars []Scalar) Point
-}
-
-type PairingPoint interface {
-	Point
-	OtherGroup() PairingPoint
-	Pairing(rhs PairingPoint) Scalar
-	MultiPairing(...PairingPoint) Scalar
 }
 
 func pointMarshalBinary(point Point) ([]byte, error) {
@@ -394,65 +363,11 @@ func (c Curve) ToEllipticCurve() (elliptic.Curve, error) {
 	switch c.Name {
 	case K256Name:
 		return K256Curve(), nil
-	case BLS12381G1Name:
-		return nil, err
-	case BLS12381G2Name:
-		return nil, err
-	case BLS12831Name:
-		return nil, err
 	case P256Name:
 		return NistP256Curve(), nil
-	case ED25519Name:
-		return nil, err
-	case PallasName:
-		return nil, err
-	case BLS12377G1Name:
-		return nil, err
-	case BLS12377G2Name:
-		return nil, err
-	case BLS12377Name:
-		return nil, err
 	default:
 		return nil, err
 	}
-}
-
-// PairingCurve represents a named elliptic curve
-// that supports pairings
-type PairingCurve struct {
-	Scalar  PairingScalar
-	PointG1 PairingPoint
-	PointG2 PairingPoint
-	GT      Scalar
-	Name    string
-}
-
-func (c PairingCurve) ScalarG1BaseMult(sc Scalar) PairingPoint {
-	return c.PointG1.Generator().Mul(sc).(PairingPoint)
-}
-
-func (c PairingCurve) ScalarG2BaseMult(sc Scalar) PairingPoint {
-	return c.PointG2.Generator().Mul(sc).(PairingPoint)
-}
-
-func (c PairingCurve) NewG1GeneratorPoint() PairingPoint {
-	return c.PointG1.Generator().(PairingPoint)
-}
-
-func (c PairingCurve) NewG2GeneratorPoint() PairingPoint {
-	return c.PointG2.Generator().(PairingPoint)
-}
-
-func (c PairingCurve) NewG1IdentityPoint() PairingPoint {
-	return c.PointG1.Identity().(PairingPoint)
-}
-
-func (c PairingCurve) NewG2IdentityPoint() PairingPoint {
-	return c.PointG2.Identity().(PairingPoint)
-}
-
-func (c PairingCurve) NewScalar() PairingScalar {
-	return c.Scalar.Zero().(PairingScalar)
 }
 
 // GetCurveByName returns the correct `Curve` given the name
@@ -460,126 +375,14 @@ func GetCurveByName(name string) *Curve {
 	switch name {
 	case K256Name:
 		return K256()
-	case BLS12381G1Name:
-		return BLS12381G1()
-	case BLS12381G2Name:
-		return BLS12381G2()
-	case BLS12831Name:
-		return BLS12381G1()
 	case P256Name:
 		return P256()
 	case ED25519Name:
 		return ED25519()
 	case PallasName:
 		return PALLAS()
-	case BLS12377G1Name:
-		return BLS12377G1()
-	case BLS12377G2Name:
-		return BLS12377G2()
-	case BLS12377Name:
-		return BLS12377G1()
 	default:
 		return nil
-	}
-}
-
-func GetPairingCurveByName(name string) *PairingCurve {
-	switch name {
-	case BLS12381G1Name:
-		return BLS12381(BLS12381G1().NewIdentityPoint())
-	case BLS12381G2Name:
-		return BLS12381(BLS12381G2().NewIdentityPoint())
-	case BLS12831Name:
-		return BLS12381(BLS12381G1().NewIdentityPoint())
-	default:
-		return nil
-	}
-}
-
-// BLS12381G1 returns the BLS12-381 curve with points in G1
-func BLS12381G1() *Curve {
-	bls12381g1Initonce.Do(bls12381g1Init)
-	return &bls12381g1
-}
-
-func bls12381g1Init() {
-	bls12381g1 = Curve{
-		Scalar: &ScalarBls12381{
-			Value: bls12381.Bls12381FqNew(),
-			point: new(PointBls12381G1),
-		},
-		Point: new(PointBls12381G1).Identity(),
-		Name:  BLS12381G1Name,
-	}
-}
-
-// BLS12381G2 returns the BLS12-381 curve with points in G2
-func BLS12381G2() *Curve {
-	bls12381g2Initonce.Do(bls12381g2Init)
-	return &bls12381g2
-}
-
-func bls12381g2Init() {
-	bls12381g2 = Curve{
-		Scalar: &ScalarBls12381{
-			Value: bls12381.Bls12381FqNew(),
-			point: new(PointBls12381G2),
-		},
-		Point: new(PointBls12381G2).Identity(),
-		Name:  BLS12381G2Name,
-	}
-}
-
-func BLS12381(preferredPoint Point) *PairingCurve {
-	return &PairingCurve{
-		Scalar: &ScalarBls12381{
-			Value: bls12381.Bls12381FqNew(),
-			point: preferredPoint,
-		},
-		PointG1: &PointBls12381G1{
-			Value: new(bls12381.G1).Identity(),
-		},
-		PointG2: &PointBls12381G2{
-			Value: new(bls12381.G2).Identity(),
-		},
-		GT: &ScalarBls12381Gt{
-			Value: new(bls12381.Gt).SetOne(),
-		},
-		Name: BLS12831Name,
-	}
-}
-
-// BLS12377G1 returns the BLS12-377 curve with points in G1
-func BLS12377G1() *Curve {
-	bls12377g1Initonce.Do(bls12377g1Init)
-	return &bls12377g1
-}
-
-func bls12377g1Init() {
-	bls12377g1 = Curve{
-		Scalar: &ScalarBls12377{
-			value: new(big.Int),
-			point: new(PointBls12377G1),
-		},
-		Point: new(PointBls12377G1).Identity(),
-		Name:  BLS12377G1Name,
-	}
-}
-
-// BLS12377G2 returns the BLS12-377 curve with points in G2
-func BLS12377G2() *Curve {
-	bls12377g2Initonce.Do(bls12377g2Init)
-	return &bls12377g2
-}
-
-func bls12377g2Init() {
-	bls12377g2 = Curve{
-		Scalar: &ScalarBls12377{
-			value: new(big.Int),
-			point: new(PointBls12377G2),
-		},
-		Point: new(PointBls12377G2).Identity(),
-		Name:  BLS12377G2Name,
 	}
 }
 

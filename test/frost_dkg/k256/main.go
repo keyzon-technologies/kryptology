@@ -159,7 +159,7 @@ func createDkgParticipants(thresh, limit int) map[uint32]*dkg.DkgParticipant {
 
 func printHelp() {
 	fmt.Printf(`
-bls INPUT
+k256 INPUT
 Simulate a DKG using K256 keys
 FLAGS:
   -h, --help						Show this help message and exit

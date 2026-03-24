@@ -228,8 +228,8 @@ func createDkgParticipants(thresh, limit int) map[uint32]*dkg.Participant {
 
 func printHelp() {
 	fmt.Printf(`
-bls INPUT
-Simulate a DKG using BLS keys
+ed25519 INPUT
+Simulate a DKG using Ed25519 keys
 FLAGS:
   -h, --help						Show this help message and exit
   -n, --limit						The total number of participants

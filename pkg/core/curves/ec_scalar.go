@@ -20,7 +20,6 @@ import (
 
 	"github.com/keyzon-technologies/kryptology/internal"
 	"github.com/keyzon-technologies/kryptology/pkg/core"
-	"github.com/keyzon-technologies/kryptology/pkg/core/curves/native/bls12381"
 )
 
 type EcScalar interface {
@@ -167,71 +166,6 @@ func (k P256Scalar) Bytes(x *big.Int) []byte {
 	bytes := make([]byte, 32)
 	x.FillBytes(bytes) // big-endian; will left-pad.
 	return bytes
-}
-
-type Bls12381Scalar struct{}
-
-// Static interface assertion
-var _ EcScalar = (*Bls12381Scalar)(nil)
-
-func NewBls12381Scalar() *Bls12381Scalar {
-	return &Bls12381Scalar{}
-}
-
-func (k Bls12381Scalar) Add(x, y *big.Int) *big.Int {
-	a := bls12381.Bls12381FqNew().SetBigInt(x)
-	b := bls12381.Bls12381FqNew().SetBigInt(y)
-	return a.Add(a, b).BigInt()
-}
-
-func (k Bls12381Scalar) Sub(x, y *big.Int) *big.Int {
-	a := bls12381.Bls12381FqNew().SetBigInt(x)
-	b := bls12381.Bls12381FqNew().SetBigInt(y)
-	return a.Sub(a, b).BigInt()
-}
-
-func (k Bls12381Scalar) Neg(x *big.Int) *big.Int {
-	a := bls12381.Bls12381FqNew().SetBigInt(x)
-	return a.Neg(a).BigInt()
-}
-
-func (k Bls12381Scalar) Mul(x, y *big.Int) *big.Int {
-	a := bls12381.Bls12381FqNew().SetBigInt(x)
-	b := bls12381.Bls12381FqNew().SetBigInt(y)
-	return a.Mul(a, b).BigInt()
-}
-
-func (k Bls12381Scalar) Div(x, y *big.Int) *big.Int {
-	c := bls12381.Bls12381FqNew()
-	a := bls12381.Bls12381FqNew().SetBigInt(x)
-	b := bls12381.Bls12381FqNew().SetBigInt(y)
-	_, wasInverted := c.Invert(b)
-	c.Mul(a, c)
-	tt := map[bool]int{false: 0, true: 1}
-	return a.CMove(a, c, tt[wasInverted]).BigInt()
-}
-
-func (k Bls12381Scalar) Hash(input []byte) *big.Int {
-	return new(ScalarBls12381).Hash(input).BigInt()
-}
-
-func (k Bls12381Scalar) Random() (*big.Int, error) {
-	a := BLS12381G1().NewScalar().Random(crand.Reader)
-	if a == nil {
-		return nil, fmt.Errorf("invalid random value")
-	}
-	return a.BigInt(), nil
-}
-
-func (k Bls12381Scalar) Bytes(x *big.Int) []byte {
-	bytes := make([]byte, 32)
-	x.FillBytes(bytes) // big-endian; will left-pad.
-	return bytes
-}
-
-func (k Bls12381Scalar) IsValid(x *big.Int) bool {
-	a := bls12381.Bls12381FqNew().SetBigInt(x)
-	return a.BigInt().Cmp(x) == 0
 }
 
 // taken from https://datatracker.ietf.org/doc/html/rfc8032
