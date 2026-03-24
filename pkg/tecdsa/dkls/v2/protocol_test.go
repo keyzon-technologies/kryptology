@@ -100,8 +100,8 @@ func testProtocolDKG(t *testing.T, curve *curves.Curve) {
 	// Both parties must agree on the joint public key.
 	require.True(t, aliceOut.PublicKey.Equal(bobOut.PublicKey))
 
-	// Q = x_A · x_B · G.
-	expected := curve.ScalarBaseMult(aliceOut.SecretKeyShare.Mul(bobOut.SecretKeyShare))
+	// Q = (x_A + x_B)·G.
+	expected := curve.ScalarBaseMult(aliceOut.SecretKeyShare).Add(curve.ScalarBaseMult(bobOut.SecretKeyShare))
 	require.True(t, aliceOut.PublicKey.Equal(expected))
 }
 

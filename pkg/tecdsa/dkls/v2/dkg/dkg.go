@@ -31,7 +31,7 @@ import (
 // AliceOutput is the output of the DKG protocol for Alice.
 // These values must be stored securely between signing sessions.
 type AliceOutput struct {
-	// PublicKey is the joint 2-of-2 public key Q = x_A · x_B · G.
+	// PublicKey is the joint 2-of-2 public key Q = (x_A + x_B)·G.
 	PublicKey curves.Point
 
 	// SecretKeyShare is Alice's additive-share of the secret key (x_A).
@@ -44,7 +44,7 @@ type AliceOutput struct {
 
 // BobOutput is the output of the DKG protocol for Bob.
 type BobOutput struct {
-	// PublicKey is the joint 2-of-2 public key Q = x_A · x_B · G.
+	// PublicKey is the joint 2-of-2 public key Q = (x_A + x_B)·G.
 	PublicKey curves.Point
 
 	// SecretKeyShare is Bob's additive-share of the secret key (x_B).

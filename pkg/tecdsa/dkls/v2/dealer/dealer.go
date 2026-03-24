@@ -25,7 +25,7 @@ import (
 // GenerateAndDeal produces key material for Alice and Bob that matches the
 // output of the DKLS19 DKG protocol.
 //
-// The joint public key is Q = x_A · x_B · G  (multiplicative sharing).
+// The joint public key is Q = (x_A + x_B)·G  (additive sharing).
 func GenerateAndDeal(curve *curves.Curve) (*dkg.AliceOutput, *dkg.BobOutput, error) {
 	aliceShare, bobShare, publicKey := produceKeyShares(curve)
 
@@ -45,11 +45,11 @@ func GenerateAndDeal(curve *curves.Curve) (*dkg.AliceOutput, *dkg.BobOutput, err
 		}, nil
 }
 
-// produceKeyShares samples x_A, x_B ← F_q and computes Q = x_A · x_B · G.
+// produceKeyShares samples x_A, x_B ← F_q and computes Q = (x_A + x_B)·G.
 func produceKeyShares(curve *curves.Curve) (xA, xB curves.Scalar, Q curves.Point) {
 	xA = curve.Scalar.Random(rand.Reader)
 	xB = curve.Scalar.Random(rand.Reader)
-	Q = curve.ScalarBaseMult(xA.Mul(xB))
+	Q = curve.ScalarBaseMult(xA).Add(curve.ScalarBaseMult(xB))
 	return xA, xB, Q
 }
 

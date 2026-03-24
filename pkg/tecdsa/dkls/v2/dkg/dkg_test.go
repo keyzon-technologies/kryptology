@@ -58,8 +58,8 @@ func TestDKGFull(t *testing.T) {
 		// Both parties must agree on the joint public key.
 		require.True(t, aliceOut.PublicKey.Equal(bobOut.PublicKey))
 
-		// Verify Q = x_A · x_B · G.
-		expectedPK := curve.ScalarBaseMult(aliceOut.SecretKeyShare.Mul(bobOut.SecretKeyShare))
+		// Verify Q = (x_A + x_B)·G.
+		expectedPK := curve.ScalarBaseMult(aliceOut.SecretKeyShare).Add(curve.ScalarBaseMult(bobOut.SecretKeyShare))
 		require.True(t, aliceOut.PublicKey.Equal(expectedPK))
 	}
 }

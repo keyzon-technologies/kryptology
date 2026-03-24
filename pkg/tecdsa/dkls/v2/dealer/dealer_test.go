@@ -25,8 +25,8 @@ func TestGenerateAndDeal(t *testing.T) {
 			// Both parties must agree on the public key.
 			require.True(t, alice.PublicKey.Equal(bob.PublicKey))
 
-			// Q == x_A · x_B · G
-			expected := curve.ScalarBaseMult(alice.SecretKeyShare.Mul(bob.SecretKeyShare))
+			// Q == (x_A + x_B)·G
+			expected := curve.ScalarBaseMult(alice.SecretKeyShare).Add(curve.ScalarBaseMult(bob.SecretKeyShare))
 			require.True(t, alice.PublicKey.Equal(expected))
 
 			require.NotNil(t, alice.SeedOtResult)

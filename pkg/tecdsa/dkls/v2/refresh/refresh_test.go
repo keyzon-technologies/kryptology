@@ -31,10 +31,10 @@ func TestRefreshAndSign(t *testing.T) {
 			aliceRefresh := NewAlice(curve, aliceDkg)
 			bobRefresh := NewBob(curve, bobDkg)
 
-			kA, err := aliceRefresh.Round1AliceMultiplier()
+			kA, err := aliceRefresh.Round1AliceAddend()
 			require.NoError(t, err)
 
-			r2, err := bobRefresh.Round2BobMultiplierAndOT(kA)
+			r2, err := bobRefresh.Round2BobAddendAndOT(kA)
 			require.NoError(t, err)
 
 			maskedChoices, err := aliceRefresh.Round3AliceUpdateAndOT(r2)

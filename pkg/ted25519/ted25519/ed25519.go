@@ -20,7 +20,6 @@ import (
 	"crypto/sha512"
 	"fmt"
 	"io"
-	"strconv"
 
 	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
 )
@@ -117,7 +116,7 @@ func NewKeyFromSeed(seed []byte) (PrivateKey, error) {
 
 func newKeyFromSeed(privateKey, seed []byte) error {
 	if l := len(seed); l != SeedSize {
-		return fmt.Errorf("ed25519: bad seed length: " + strconv.Itoa(l))
+		return fmt.Errorf("ed25519: bad seed length: %d", l)
 	}
 
 	digest := sha512.Sum512(seed)
@@ -156,7 +155,7 @@ func Sign(privateKey PrivateKey, message []byte) ([]byte, error) {
 
 func sign(signature, privateKey, message []byte) error {
 	if l := len(privateKey); l != PrivateKeySize {
-		return fmt.Errorf("ed25519: bad private key length: " + strconv.Itoa(l))
+		return fmt.Errorf("ed25519: bad private key length: %d", l)
 	}
 
 	var err error
@@ -232,11 +231,11 @@ func sign(signature, privateKey, message []byte) error {
 // Previously publicKey is of type PublicKey
 func Verify(publicKey PublicKey, message, sig []byte) (bool, error) {
 	if l := len(publicKey); l != PublicKeySize {
-		return false, fmt.Errorf("ed25519: bad public key length: " + strconv.Itoa(l))
+		return false, fmt.Errorf("ed25519: bad public key length: %d", l)
 	}
 
 	if len(sig) != SignatureSize || sig[63]&224 != 0 {
-		return false, fmt.Errorf("ed25519: bad signature size: " + strconv.Itoa(len(sig)))
+		return false, fmt.Errorf("ed25519: bad signature size: %d", len(sig))
 	}
 
 	var publicKeyBytes [32]byte

@@ -1,6 +1,6 @@
 module github.com/keyzon-technologies/kryptology
 
-go 1.22
+go 1.26.1
 
 require (
 	filippo.io/edwards25519 v1.0.0-rc.1
