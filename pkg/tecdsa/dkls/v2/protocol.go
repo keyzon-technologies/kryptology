@@ -48,3 +48,9 @@ func (p *protoStepper) Next(input *protocol.Message) (*protocol.Message, error) 
 }
 
 func (p *protoStepper) complete() bool { return p.step >= len(p.steps) }
+
+// Complete reports whether all protocol steps have been executed.
+// This is the exported counterpart of complete(), for use by callers that need
+// to detect when an iterator has finished without relying on Next returning nil
+// (e.g. when the last step produces a non-nil output, as in Bob's DKG Round9).
+func (p *protoStepper) Complete() bool { return p.complete() }
