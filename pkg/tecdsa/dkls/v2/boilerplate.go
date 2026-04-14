@@ -100,37 +100,13 @@ func newAliceDkgFromAlice(a *dkg.Alice, version uint) *AliceDkg {
 			}
 			return encodeDkgRound4Output(aliceProof, version)
 		},
-		// Step 3: receive Bob's OT Round1 → run OT Round2.
+		// Step 3: receive Bob's silent-OT key + proof → finalize silent OT (no reply).
 		func(input *protocol.Message) (*protocol.Message, error) {
-			proof, err := decodeDkgRound5Output(input)
+			r5, err := decodeDkgRound5Output(input)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			choices, err := ad.Round6OTRound2(proof)
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound6Output(choices, version)
-		},
-		// Step 4: receive OT Round3 challenge → respond.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			challenge, err := decodeDkgRound7Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			responses, err := ad.Round8OTRound4(challenge)
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound8Output(responses, version)
-		},
-		// Step 5: receive OT Round5 openings → final verification.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			openings, err := decodeDkgRound9Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			if err := ad.Round10OTRound6(openings); err != nil {
+			if err := ad.Round6FinalizeSilentOT(r5); err != nil {
 				return nil, err
 			}
 			return nil, nil
@@ -163,41 +139,17 @@ func newBobDkgFromBob(b *dkg.Bob, version uint) *BobDkg {
 			}
 			return encodeDkgRound3Output(bobProof, version)
 		},
-		// Step 3: receive Alice's revealed proof → verify, decommit, start OT.
+		// Step 3: receive Alice's revealed proof → verify, decommit, send silent-OT key.
 		func(input *protocol.Message) (*protocol.Message, error) {
 			proof, err := decodeDkgRound4Output(input)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			otR1, err := bd.Round5DecommitAndStartOT(proof)
+			r5, err := bd.Round5DecommitAndSendOTKey(proof)
 			if err != nil {
 				return nil, err
 			}
-			return encodeDkgRound5Output(otR1, version)
-		},
-		// Step 4: receive OT Round2 masked choices → send OT challenges.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			choices, err := decodeDkgRound6Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			challenge, err := bd.Round7OTRound3(choices)
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound7Output(challenge, version)
-		},
-		// Step 5: receive OT responses → verify and send openings.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			responses, err := decodeDkgRound8Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			openings, err := bd.Round9OTRound5(responses)
-			if err != nil {
-				return nil, err
-			}
-			return encodeDkgRound9Output(openings, version)
+			return encodeDkgRound5Output(r5, version)
 		},
 	}
 	return bd
@@ -482,37 +434,13 @@ func NewAliceRefresh(curve *curves.Curve, dkgResult *protocol.Message, version u
 			}
 			return encodeRefreshRound1Output(kA, version)
 		},
-		// Step 2: receive Bob's RefreshRound2Output → update share, start OT.
+		// Step 2: receive Bob's RefreshRound2Output → update share, finalize silent OT (no reply).
 		func(input *protocol.Message) (*protocol.Message, error) {
 			r2, err := decodeRefreshRound2Output(input)
 			if err != nil {
 				return nil, errors.WithStack(err)
 			}
-			choices, err := a.Round3AliceUpdateAndOT(r2)
-			if err != nil {
-				return nil, err
-			}
-			return encodeRefreshRound3Output(choices, version)
-		},
-		// Step 3: OT Round3 challenge → respond.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			challenges, err := decodeRefreshRound4Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			responses, err := a.Round5OTRound4(challenges)
-			if err != nil {
-				return nil, err
-			}
-			return encodeRefreshRound5Output(responses, version)
-		},
-		// Step 4: OT Round5 openings → final verify.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			openings, err := decodeRefreshRound6Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			if err := a.Round7OTRound6(openings); err != nil {
+			if err := a.Round3AliceUpdateAndOT(r2); err != nil {
 				return nil, err
 			}
 			return nil, nil
@@ -544,7 +472,7 @@ func NewBobRefresh(curve *curves.Curve, dkgResult *protocol.Message, version uin
 	}
 	b := &BobRefresh{Bob: refresh.NewBob(curve, bobOut)}
 	b.steps = []func(*protocol.Message) (*protocol.Message, error){
-		// Step 1: receive Alice's addend k_A → update share, start OT, reply.
+		// Step 1: receive Alice's addend k_A → update share, send silent-OT key + addend.
 		func(input *protocol.Message) (*protocol.Message, error) {
 			kA, err := decodeRefreshRound1Output(input)
 			if err != nil {
@@ -555,30 +483,6 @@ func NewBobRefresh(curve *curves.Curve, dkgResult *protocol.Message, version uin
 				return nil, err
 			}
 			return encodeRefreshRound2Output(r2, version)
-		},
-		// Step 2: OT Round2 masked choices → send challenge.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			choices, err := decodeRefreshRound3Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			challenges, err := b.Round4OTRound3(choices)
-			if err != nil {
-				return nil, err
-			}
-			return encodeRefreshRound4Output(challenges, version)
-		},
-		// Step 3: OT responses → verify and send openings.
-		func(input *protocol.Message) (*protocol.Message, error) {
-			responses, err := decodeRefreshRound5Output(input)
-			if err != nil {
-				return nil, errors.WithStack(err)
-			}
-			openings, err := b.Round6OTRound5(responses)
-			if err != nil {
-				return nil, err
-			}
-			return encodeRefreshRound6Output(openings, version)
 		},
 	}
 	return b, nil

@@ -19,8 +19,10 @@
 package simplest
 
 import (
+	"bytes"
 	"crypto/rand"
 	"crypto/subtle"
+	"encoding/gob"
 	"fmt"
 
 	"github.com/gtank/merlin"
@@ -390,4 +392,41 @@ func (r *ReceiverOutput) Decrypt(ciphertexts [][keyCount][DigestSize]byte) ([][D
 		plaintexts[i] = xorBytes(r.OneTimePadDecryptionKey[i], ciphertexts[i][choice])
 	}
 	return plaintexts, nil
+}
+
+// receiverOutputGob is the wire format for ReceiverOutput.
+// RandomChoiceBits is excluded because it is fully derivable from PackedRandomChoiceBits.
+type receiverOutputGob struct {
+	PackedRandomChoiceBits []byte
+	OneTimePadDecryptionKey []OneTimePadDecryptionKey
+}
+
+// GobEncode omits RandomChoiceBits to avoid persisting ~2 KB of redundant data per OT session.
+func (r ReceiverOutput) GobEncode() ([]byte, error) {
+	buf := new(bytes.Buffer)
+	enc := gob.NewEncoder(buf)
+	if err := enc.Encode(receiverOutputGob{
+		PackedRandomChoiceBits:  r.PackedRandomChoiceBits,
+		OneTimePadDecryptionKey: r.OneTimePadDecryptionKey,
+	}); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// GobDecode reconstructs RandomChoiceBits from PackedRandomChoiceBits after decoding.
+func (r *ReceiverOutput) GobDecode(data []byte) error {
+	var wire receiverOutputGob
+	if err := gob.NewDecoder(bytes.NewReader(data)).Decode(&wire); err != nil {
+		return err
+	}
+	r.PackedRandomChoiceBits = wire.PackedRandomChoiceBits
+	r.OneTimePadDecryptionKey = wire.OneTimePadDecryptionKey
+	// Reconstruct the unpacked choice bits from the packed representation.
+	n := len(r.PackedRandomChoiceBits) * 8
+	r.RandomChoiceBits = make([]int, n)
+	for i := range r.RandomChoiceBits {
+		r.RandomChoiceBits[i] = int(ExtractBitFromByteVector(r.PackedRandomChoiceBits, i))
+	}
+	return nil
 }

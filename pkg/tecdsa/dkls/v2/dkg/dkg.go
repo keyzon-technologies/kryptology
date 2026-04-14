@@ -1,19 +1,22 @@
 // Copyright Keyzon Technologies. All Rights Reserved.
 //
 // SPDX-License-Identifier: Apache-2.0
-//
 
 // Package dkg implements the Distributed Key Generation (DKG) protocol of
 // [DKLS19](https://eprint.iacr.org/2019/523.pdf).
 //
-// The DKG is described in Protocol 1 of the paper ("2-Party Key Generation").
-// Differences from DKLs18:
-//  1. Session ID is derived via a Fiat–Shamir transcript that commits to both parties'
-//     random seeds before any key material is revealed.
-//  2. The Schnorr commitment uses SHA3-256 over the compressed statement, giving a
-//     tighter reduction in the UC proof.
-//  3. Alice's decommitment proof is sent together with her OT messages, reducing
-//     the number of rounds from 10 to 9.
+// This version replaces the 7-round Simplest OT base setup (Rounds 5-10 in the
+// original) with a 2-round Silent OT setup (Rounds 5-6), reducing DKG from 10
+// interactive rounds to 6 while cutting per-pair storage from ~24 KB to ~162 bytes.
+//
+// Round structure:
+//
+//	Round 1 (Bob→Alice):   Bob's random session seed
+//	Round 2 (Alice→Bob):   Alice's seed + Schnorr commitment
+//	Round 3 (Bob→Alice):   Bob's Schnorr proof for x_B
+//	Round 4 (Alice→Bob):   Alice's Schnorr decommitment for x_A
+//	Round 5 (Bob→Alice):   Decommit ACK + Silent OT public key B = b·G + Schnorr proof of b
+//	Round 6 (Alice local): Verify OT proof, generate master scalar + choice bits → Output
 package dkg
 
 import (
@@ -23,8 +26,8 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/ot/base/silent"
 	"github.com/keyzon-technologies/kryptology/pkg/ot/base/simplest"
-	"github.com/keyzon-technologies/kryptology/pkg/ot/extension/kos"
 	"github.com/keyzon-technologies/kryptology/pkg/zkp/schnorr"
 )
 
@@ -37,9 +40,9 @@ type AliceOutput struct {
 	// SecretKeyShare is Alice's additive-share of the secret key (x_A).
 	SecretKeyShare curves.Scalar
 
-	// SeedOtResult holds the correlated-OT seed material from the base OT,
-	// where Alice played the receiver role.
-	SeedOtResult *simplest.ReceiverOutput
+	// SeedOtResult holds the compact silent-OT seed material (replaces the
+	// ~8 KB simplest.ReceiverOutput from the previous Simplest OT design).
+	SeedOtResult *silent.ReceiverOutput
 }
 
 // BobOutput is the output of the DKG protocol for Bob.
@@ -50,16 +53,16 @@ type BobOutput struct {
 	// SecretKeyShare is Bob's additive-share of the secret key (x_B).
 	SecretKeyShare curves.Scalar
 
-	// SeedOtResult holds the correlated-OT seed material from the base OT,
-	// where Bob played the sender role.
-	SeedOtResult *simplest.SenderOutput
+	// SeedOtResult holds the compact silent-OT seed material (replaces the
+	// ~16 KB simplest.SenderOutput from the previous Simplest OT design).
+	SeedOtResult *silent.SenderOutput
 }
 
 // Alice holds Alice's mutable state across all rounds of the DKG.
 type Alice struct {
 	prover         *schnorr.Prover
 	proof          *schnorr.Proof
-	receiver       *simplest.Receiver
+	silentReceiver *silent.ReceiverOutput
 	secretKeyShare curves.Scalar
 	publicKey      curves.Point
 	curve          *curves.Curve
@@ -69,7 +72,7 @@ type Alice struct {
 // Bob holds Bob's mutable state across all rounds of the DKG.
 type Bob struct {
 	prover          *schnorr.Prover
-	sender          *simplest.Sender
+	silentSender    *silent.SenderOutput
 	secretKeyShare  curves.Scalar
 	publicKey       curves.Point
 	aliceCommitment schnorr.Commitment
@@ -84,12 +87,17 @@ type Round2Output struct {
 	Seed [simplest.DigestSize]byte
 
 	// Commitment is Alice's Pedersen-style commitment to her Schnorr proof.
-	// DKLS19: computed as SHA3-256(statement ‖ nonce) for a tighter reduction.
 	Commitment schnorr.Commitment
 }
 
+// Round5Output is the message Bob sends to Alice in round 5.
+// It bundles the decommitment acknowledgement with the Silent OT key setup.
+type Round5Output struct {
+	// OTProof is the Schnorr proof of Bob's silent-OT DH secret b.
+	OTProof *schnorr.Proof
+}
+
 // NewAlice creates a fresh Alice instance ready to begin DKG.
-// Returns nil if curve is nil.
 func NewAlice(curve *curves.Curve) *Alice {
 	if curve == nil {
 		return nil
@@ -101,15 +109,8 @@ func NewAlice(curve *curves.Curve) *Alice {
 }
 
 // NewAliceWithSecret creates an Alice instance that uses secretShare as its secret key
-// contribution instead of generating a fresh random one. This is used in 2-of-n
-// threshold setups (Shamir+DKLS19 hybrid): each node already holds a Lagrange-weighted
-// Shamir share of the master secret, and the DKLS19 DKG is used only to establish the
-// OT correlations needed for future signing sessions.
-//
-// The caller is responsible for ensuring that secretShare + Bob's corresponding share
-// equals the master secret key x such that Q = x·G is the desired joint public key.
-//
-// Returns nil if curve or secretShare is nil.
+// contribution instead of generating a fresh random one. Used in 2-of-n threshold
+// setups (Shamir+DKLS19 hybrid).
 func NewAliceWithSecret(curve *curves.Curve, secretShare curves.Scalar) *Alice {
 	if curve == nil || secretShare == nil {
 		return nil
@@ -122,7 +123,6 @@ func NewAliceWithSecret(curve *curves.Curve, secretShare curves.Scalar) *Alice {
 }
 
 // NewBob creates a fresh Bob instance ready to begin DKG.
-// Returns nil if curve is nil.
 func NewBob(curve *curves.Curve) *Bob {
 	if curve == nil {
 		return nil
@@ -134,11 +134,7 @@ func NewBob(curve *curves.Curve) *Bob {
 }
 
 // NewBobWithSecret creates a Bob instance that uses secretShare as its secret key
-// contribution instead of generating a fresh random one. This is the Bob-side
-// counterpart of NewAliceWithSecret; see that function's documentation for the
-// intended use case and caller responsibilities.
-//
-// Returns nil if curve or secretShare is nil.
+// contribution instead of generating a fresh random one.
 func NewBobWithSecret(curve *curves.Curve, secretShare curves.Scalar) *Bob {
 	if curve == nil || secretShare == nil {
 		return nil
@@ -163,10 +159,6 @@ func (bob *Bob) Round1GenerateRandomSeed() ([simplest.DigestSize]byte, error) {
 }
 
 // Round2CommitToProof is Alice's response to Bob's seed (Protocol 1, steps 2–3).
-// Alice:
-//  1. Samples her own random seed and appends both seeds to the transcript.
-//  2. Derives sub-session IDs for the seed OT and for her Schnorr proof.
-//  3. Samples her secret key share x_A and commits to the Schnorr proof of x_A.
 func (alice *Alice) Round2CommitToProof(bobSeed [simplest.DigestSize]byte) (*Round2Output, error) {
 	aliceSeed := [simplest.DigestSize]byte{}
 	if _, err := rand.Read(aliceSeed[:]); err != nil {
@@ -175,27 +167,16 @@ func (alice *Alice) Round2CommitToProof(bobSeed [simplest.DigestSize]byte) (*Rou
 	alice.transcript.AppendMessage([]byte("dkls19_sid_bob"), bobSeed[:])
 	alice.transcript.AppendMessage([]byte("dkls19_sid_alice"), aliceSeed[:])
 
-	// Derive sub-session ID for the seed OT (re-use transcript, will be re-derived by Bob).
-	otSessionID := [simplest.DigestSize]byte{}
-	copy(otSessionID[:], alice.transcript.ExtractBytes([]byte("dkls19_seed_ot"), simplest.DigestSize))
-
-	var err error
-	alice.receiver, err = simplest.NewReceiver(alice.curve, kos.Kappa, otSessionID)
-	if err != nil {
-		return nil, errors.Wrap(err, "DKLS19 DKG Round2: constructing seed-OT receiver")
-	}
-
-	// Derive sub-session ID for Alice's Schnorr proof.
+	// Reserve the same label Bob will extract in Round3 so both transcripts stay in sync.
 	schnorrID := [simplest.DigestSize]byte{}
 	copy(schnorrID[:], alice.transcript.ExtractBytes([]byte("dkls19_schnorr_alice"), simplest.DigestSize))
 
-	// Use an externally-provided secret share when one was supplied (e.g. for the
-	// Shamir+DKLS19 2-of-n hybrid); otherwise generate a fresh random share.
 	if alice.secretKeyShare == nil {
 		alice.secretKeyShare = alice.curve.Scalar.Random(rand.Reader)
 	}
 	alice.prover = schnorr.NewProver(alice.curve, nil, schnorrID[:])
 
+	var err error
 	var commitment schnorr.Commitment
 	alice.proof, commitment, err = alice.prover.ProveCommit(alice.secretKeyShare)
 	if err != nil {
@@ -209,29 +190,16 @@ func (alice *Alice) Round2CommitToProof(bobSeed [simplest.DigestSize]byte) (*Rou
 }
 
 // Round3SchnorrProve is Bob's response (Protocol 1, steps 4–5).
-// Bob ingests Alice's seed and commitment, derives the same sub-session IDs, and
-// sends his own Schnorr proof (non-committed, since Alice committed first).
 func (bob *Bob) Round3SchnorrProve(r2 *Round2Output) (*schnorr.Proof, error) {
 	bob.transcript.AppendMessage([]byte("dkls19_sid_alice"), r2.Seed[:])
 	bob.aliceCommitment = r2.Commitment
 
-	otSessionID := [simplest.DigestSize]byte{}
-	copy(otSessionID[:], bob.transcript.ExtractBytes([]byte("dkls19_seed_ot"), simplest.DigestSize))
-
-	var err error
-	bob.sender, err = simplest.NewSender(bob.curve, kos.Kappa, otSessionID)
-	if err != nil {
-		return nil, errors.Wrap(err, "DKLS19 DKG Round3: constructing seed-OT sender")
-	}
-
-	// Store the salt we will need when we verify Alice's decommitment.
+	// Store the salt needed to verify Alice's decommitment later.
 	copy(bob.aliceSalt[:], bob.transcript.ExtractBytes([]byte("dkls19_schnorr_alice"), simplest.DigestSize))
 
 	schnorrID := [simplest.DigestSize]byte{}
 	copy(schnorrID[:], bob.transcript.ExtractBytes([]byte("dkls19_schnorr_bob"), simplest.DigestSize))
 
-	// Use an externally-provided secret share when one was supplied (e.g. for the
-	// Shamir+DKLS19 2-of-n hybrid); otherwise generate a fresh random share.
 	if bob.secretKeyShare == nil {
 		bob.secretKeyShare = bob.curve.Scalar.Random(rand.Reader)
 	}
@@ -244,8 +212,7 @@ func (bob *Bob) Round3SchnorrProve(r2 *Round2Output) (*schnorr.Proof, error) {
 	return proof, nil
 }
 
-// Round4VerifyAndReveal is Alice's step where she verifies Bob's proof and reveals
-// her own (Protocol 1, step 6).
+// Round4VerifyAndReveal is Alice's step where she verifies Bob's proof and reveals her own.
 func (alice *Alice) Round4VerifyAndReveal(bobProof *schnorr.Proof) (*schnorr.Proof, error) {
 	schnorrID := [simplest.DigestSize]byte{}
 	copy(schnorrID[:], alice.transcript.ExtractBytes([]byte("dkls19_schnorr_bob"), simplest.DigestSize))
@@ -253,77 +220,67 @@ func (alice *Alice) Round4VerifyAndReveal(bobProof *schnorr.Proof) (*schnorr.Pro
 	if err := schnorr.Verify(bobProof, alice.curve, nil, schnorrID[:]); err != nil {
 		return nil, errors.Wrap(err, "DKLS19 DKG Round4: Alice failed to verify Bob's Schnorr proof")
 	}
-	// Q = x_A·G + x_B·G = (x_A + x_B)·G — additive secret sharing.
-	// bobProof.Statement = x_B·G (Bob's Schnorr statement).
 	alice.publicKey = alice.curve.ScalarBaseMult(alice.secretKeyShare).Add(bobProof.Statement)
 	return alice.proof, nil
 }
 
-// Round5DecommitAndStartOT is Bob's decommitment verification and OT kickoff
-// (Protocol 1, steps 7–8).
-func (bob *Bob) Round5DecommitAndStartOT(aliceProof *schnorr.Proof) (*schnorr.Proof, error) {
+// Round5DecommitAndSendOTKey is Bob's decommitment verification and Silent OT key generation.
+// Bob verifies Alice's decommitment, generates the silent-OT DH key pair, and sends
+// the public key with a Schnorr proof to Alice.
+func (bob *Bob) Round5DecommitAndSendOTKey(aliceProof *schnorr.Proof) (*Round5Output, error) {
 	if err := schnorr.DecommitVerify(aliceProof, bob.aliceCommitment, bob.curve, nil, bob.aliceSalt[:]); err != nil {
 		return nil, errors.Wrap(err, "DKLS19 DKG Round5: Bob failed to verify Alice's decommitment")
 	}
-	// Q = x_A·G + x_B·G = (x_A + x_B)·G — additive secret sharing.
-	// aliceProof.Statement = x_A·G (Alice's Schnorr statement).
 	bob.publicKey = aliceProof.Statement.Add(bob.curve.ScalarBaseMult(bob.secretKeyShare))
 
-	seedOTRound1, err := bob.sender.Round1ComputeAndZkpToPublicKey()
+	// Derive a session-specific ID for the Silent OT Schnorr proof.
+	otSessionID := make([]byte, simplest.DigestSize)
+	copy(otSessionID, bob.transcript.ExtractBytes([]byte("dkls19_silent_ot"), simplest.DigestSize))
+
+	var err error
+	var otProof *schnorr.Proof
+	bob.silentSender, otProof, err = silent.NewSender(bob.curve, otSessionID)
 	if err != nil {
-		return nil, errors.Wrap(err, "DKLS19 DKG Round5: seed-OT round 1")
+		return nil, errors.Wrap(err, "DKLS19 DKG Round5: Silent OT sender setup")
 	}
-	return seedOTRound1, nil
+	return &Round5Output{OTProof: otProof}, nil
 }
 
-// Round6OTRound2 wraps the second round of the seed OT (Alice verifies the sender's
-// Schnorr proof and sends masked choice bits).
-func (alice *Alice) Round6OTRound2(proof *schnorr.Proof) ([]simplest.ReceiversMaskedChoices, error) {
-	return alice.receiver.Round2VerifySchnorrAndPadTransfer(proof)
-}
+// Round6FinalizeSilentOT is Alice's final DKG step.
+// Alice verifies Bob's Silent OT Schnorr proof, then generates her master scalar
+// and random choice bits. No message is sent back — Alice's Output() is now ready.
+func (alice *Alice) Round6FinalizeSilentOT(r5 *Round5Output) error {
+	otSessionID := make([]byte, simplest.DigestSize)
+	copy(otSessionID, alice.transcript.ExtractBytes([]byte("dkls19_silent_ot"), simplest.DigestSize))
 
-// Round7OTRound3 wraps the third round of the seed OT.
-func (bob *Bob) Round7OTRound3(maskedChoices []simplest.ReceiversMaskedChoices) ([]simplest.OtChallenge, error) {
-	return bob.sender.Round3PadTransfer(maskedChoices)
-}
-
-// Round8OTRound4 wraps the fourth round of the seed OT.
-func (alice *Alice) Round8OTRound4(challenges []simplest.OtChallenge) ([]simplest.OtChallengeResponse, error) {
-	return alice.receiver.Round4RespondToChallenge(challenges)
-}
-
-// Round9OTRound5 wraps the fifth round of the seed OT.
-func (bob *Bob) Round9OTRound5(responses []simplest.OtChallengeResponse) ([]simplest.ChallengeOpening, error) {
-	return bob.sender.Round5Verify(responses)
-}
-
-// Round10OTRound6 wraps the sixth round of the seed OT (final verification).
-func (alice *Alice) Round10OTRound6(openings []simplest.ChallengeOpening) error {
-	return alice.receiver.Round6Verify(openings)
+	recv, err := silent.NewReceiver(alice.curve, r5.OTProof, otSessionID)
+	if err != nil {
+		return errors.Wrap(err, "DKLS19 DKG Round6: Alice Silent OT finalise")
+	}
+	alice.silentReceiver = recv
+	return nil
 }
 
 // Output returns Alice's DKG output after all rounds have completed.
-// Returns nil if the protocol has not yet finished.
 func (alice *Alice) Output() *AliceOutput {
-	if alice.receiver == nil {
+	if alice.silentReceiver == nil || alice.publicKey == nil {
 		return nil
 	}
 	return &AliceOutput{
 		PublicKey:      alice.publicKey,
 		SecretKeyShare: alice.secretKeyShare,
-		SeedOtResult:   alice.receiver.Output,
+		SeedOtResult:   alice.silentReceiver,
 	}
 }
 
 // Output returns Bob's DKG output after all rounds have completed.
-// Returns nil if the protocol has not yet finished.
 func (bob *Bob) Output() *BobOutput {
-	if bob.sender == nil {
+	if bob.silentSender == nil {
 		return nil
 	}
 	return &BobOutput{
 		PublicKey:      bob.publicKey,
 		SecretKeyShare: bob.secretKeyShare,
-		SeedOtResult:   bob.sender.Output,
+		SeedOtResult:   bob.silentSender,
 	}
 }

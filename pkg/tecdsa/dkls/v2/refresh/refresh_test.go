@@ -27,7 +27,7 @@ func TestRefreshAndSign(t *testing.T) {
 			aliceDkg, bobDkg, err := dealer.GenerateAndDeal(curve)
 			require.NoError(t, err)
 
-			// === Key Refresh ===
+			// === Key Refresh (3 rounds: Alice sends addend, Bob replies with addend+OTProof, Alice finalizes) ===
 			aliceRefresh := NewAlice(curve, aliceDkg)
 			bobRefresh := NewBob(curve, bobDkg)
 
@@ -37,19 +37,7 @@ func TestRefreshAndSign(t *testing.T) {
 			r2, err := bobRefresh.Round2BobAddendAndOT(kA)
 			require.NoError(t, err)
 
-			maskedChoices, err := aliceRefresh.Round3AliceUpdateAndOT(r2)
-			require.NoError(t, err)
-
-			challenges, err := bobRefresh.Round4OTRound3(maskedChoices)
-			require.NoError(t, err)
-
-			responses, err := aliceRefresh.Round5OTRound4(challenges)
-			require.NoError(t, err)
-
-			openings, err := bobRefresh.Round6OTRound5(responses)
-			require.NoError(t, err)
-
-			require.NoError(t, aliceRefresh.Round7OTRound6(openings))
+			require.NoError(t, aliceRefresh.Round3AliceUpdateAndOT(r2))
 
 			newAliceDkg := aliceRefresh.Output()
 			newBobDkg := bobRefresh.Output()
@@ -63,10 +51,10 @@ func TestRefreshAndSign(t *testing.T) {
 			alice := sign.NewAlice(curve, sha3.New256(), newAliceDkg)
 			bob := sign.NewBob(curve, sha3.New256(), newBobDkg)
 
-			aliceSeed, err := alice.Round1GenerateRandomSeed()
+			r1, err := alice.Round1GenerateRandomSeed()
 			require.NoError(t, err)
 
-			signR2, err := bob.Round2Initialize(aliceSeed)
+			signR2, err := bob.Round2Initialize(r1)
 			require.NoError(t, err)
 
 			signR3, err := alice.Round3Sign(message, signR2)

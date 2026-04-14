@@ -17,8 +17,7 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
-	"github.com/keyzon-technologies/kryptology/pkg/ot/base/simplest"
-	"github.com/keyzon-technologies/kryptology/pkg/ot/extension/kos"
+	"github.com/keyzon-technologies/kryptology/pkg/ot/base/silent"
 	"github.com/keyzon-technologies/kryptology/pkg/tecdsa/dkls/v2/dkg"
 )
 
@@ -53,34 +52,20 @@ func produceKeyShares(curve *curves.Curve) (xA, xB curves.Scalar, Q curves.Point
 	return xA, xB, Q
 }
 
-// produceOTResults generates seed OT material for Alice (receiver) and Bob (sender)
-// without running the interactive protocol — only safe inside a trusted dealer.
-func produceOTResults(curve *curves.Curve) (*simplest.ReceiverOutput, *simplest.SenderOutput, error) {
-	// Initialise a receiver to get fresh random choice bits.
-	receiver, err := simplest.NewReceiver(curve, kos.Kappa, [simplest.DigestSize]byte{})
+// produceOTResults generates compact silent-OT seed material for Alice (receiver) and
+// Bob (sender) without running the interactive DKG protocol — only safe inside a trusted
+// dealer since the dealer sees both parties' material.
+func produceOTResults(curve *curves.Curve) (*silent.ReceiverOutput, *silent.SenderOutput, error) {
+	// Use an empty session ID — the dealer doesn't participate in a live transcript.
+	sessionID := make([]byte, 32)
+
+	senderOut, proof, err := silent.NewSender(curve, sessionID)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "DKLS19 dealer: initialising OT receiver")
+		return nil, nil, errors.Wrap(err, "DKLS19 dealer: silent OT sender")
 	}
-
-	encryptionKeys := make([]simplest.OneTimePadEncryptionKeys, kos.Kappa)
-	decryptionKeys := make([]simplest.OneTimePadDecryptionKey, kos.Kappa)
-
-	for i := 0; i < kos.Kappa; i++ {
-		if _, err = rand.Read(encryptionKeys[i][0][:]); err != nil {
-			return nil, nil, errors.Wrap(err, "DKLS19 dealer: generating OT pad [0]")
-		}
-		if _, err = rand.Read(encryptionKeys[i][1][:]); err != nil {
-			return nil, nil, errors.Wrap(err, "DKLS19 dealer: generating OT pad [1]")
-		}
-		// The receiver holds the key corresponding to its random choice bit.
-		decryptionKeys[i] = encryptionKeys[i][receiver.Output.RandomChoiceBits[i]]
+	receiverOut, err := silent.NewReceiver(curve, proof, sessionID)
+	if err != nil {
+		return nil, nil, errors.Wrap(err, "DKLS19 dealer: silent OT receiver")
 	}
-
-	return &simplest.ReceiverOutput{
-			PackedRandomChoiceBits:  receiver.Output.PackedRandomChoiceBits,
-			RandomChoiceBits:        receiver.Output.RandomChoiceBits,
-			OneTimePadDecryptionKey: decryptionKeys,
-		}, &simplest.SenderOutput{
-			OneTimePadEncryptionKeys: encryptionKeys,
-		}, nil
+	return receiverOut, senderOut, nil
 }

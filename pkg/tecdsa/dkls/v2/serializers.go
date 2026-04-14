@@ -14,7 +14,6 @@ import (
 
 	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
 	"github.com/keyzon-technologies/kryptology/pkg/core/protocol"
-	"github.com/keyzon-technologies/kryptology/pkg/ot/base/simplest"
 	"github.com/keyzon-technologies/kryptology/pkg/tecdsa/dkls/v2/dkg"
 	"github.com/keyzon-technologies/kryptology/pkg/tecdsa/dkls/v2/refresh"
 	"github.com/keyzon-technologies/kryptology/pkg/tecdsa/dkls/v2/sign"
@@ -72,7 +71,12 @@ func gobDecode(data []byte, v interface{}) error {
 
 // ── DKG round serializers ─────────────────────────────────────────────────────
 
-func encodeDkgRound1Output(seed [simplest.DigestSize]byte, version uint) (*protocol.Message, error) {
+// DKG round structure (6 rounds total):
+//  Bob→Alice: round 1 (seed), round 3 (Schnorr proof), round 5 (OT key + proof)
+//  Alice→Bob: round 2 (seed + commitment), round 4 (Schnorr proof)
+//  Alice local: round 6 (finalize silent OT — no message)
+
+func encodeDkgRound1Output(seed [32]byte, version uint) (*protocol.Message, error) {
 	if err := checkVersion(version); err != nil {
 		return nil, err
 	}
@@ -83,11 +87,11 @@ func encodeDkgRound1Output(seed [simplest.DigestSize]byte, version uint) (*proto
 	return newMsg(Dkls19Dkg, "1", b, version), nil
 }
 
-func decodeDkgRound1Output(m *protocol.Message) ([simplest.DigestSize]byte, error) {
+func decodeDkgRound1Output(m *protocol.Message) ([32]byte, error) {
 	if err := checkVersion(m.Version); err != nil {
-		return [simplest.DigestSize]byte{}, err
+		return [32]byte{}, err
 	}
-	var out [simplest.DigestSize]byte
+	var out [32]byte
 	return out, gobDecode(m.Payloads[payloadKey], &out)
 }
 
@@ -148,99 +152,25 @@ func decodeDkgRound4Output(m *protocol.Message) (*schnorr.Proof, error) {
 	return out, gobDecode(m.Payloads[payloadKey], out)
 }
 
-func encodeDkgRound5Output(proof *schnorr.Proof, version uint) (*protocol.Message, error) {
+// encodeDkgRound5Output serialises Bob's Round5Output (silent OT key + Schnorr proof).
+func encodeDkgRound5Output(r *dkg.Round5Output, version uint) (*protocol.Message, error) {
 	if err := checkVersion(version); err != nil {
 		return nil, err
 	}
-	b, err := gobEncode(proof)
+	b, err := gobEncode(r)
 	if err != nil {
 		return nil, err
 	}
 	return newMsg(Dkls19Dkg, "5", b, version), nil
 }
 
-func decodeDkgRound5Output(m *protocol.Message) (*schnorr.Proof, error) {
+// decodeDkgRound5Output deserialises Bob's Round5Output.
+func decodeDkgRound5Output(m *protocol.Message) (*dkg.Round5Output, error) {
 	if err := checkVersion(m.Version); err != nil {
 		return nil, err
 	}
-	out := new(schnorr.Proof)
+	out := new(dkg.Round5Output)
 	return out, gobDecode(m.Payloads[payloadKey], out)
-}
-
-func encodeDkgRound6Output(choices []simplest.ReceiversMaskedChoices, version uint) (*protocol.Message, error) {
-	if err := checkVersion(version); err != nil {
-		return nil, err
-	}
-	b, err := gobEncode(choices)
-	if err != nil {
-		return nil, err
-	}
-	return newMsg(Dkls19Dkg, "6", b, version), nil
-}
-
-func decodeDkgRound6Output(m *protocol.Message) ([]simplest.ReceiversMaskedChoices, error) {
-	if err := checkVersion(m.Version); err != nil {
-		return nil, err
-	}
-	var out []simplest.ReceiversMaskedChoices
-	return out, gobDecode(m.Payloads[payloadKey], &out)
-}
-
-func encodeDkgRound7Output(challenges []simplest.OtChallenge, version uint) (*protocol.Message, error) {
-	if err := checkVersion(version); err != nil {
-		return nil, err
-	}
-	b, err := gobEncode(challenges)
-	if err != nil {
-		return nil, err
-	}
-	return newMsg(Dkls19Dkg, "7", b, version), nil
-}
-
-func decodeDkgRound7Output(m *protocol.Message) ([]simplest.OtChallenge, error) {
-	if err := checkVersion(m.Version); err != nil {
-		return nil, err
-	}
-	var out []simplest.OtChallenge
-	return out, gobDecode(m.Payloads[payloadKey], &out)
-}
-
-func encodeDkgRound8Output(responses []simplest.OtChallengeResponse, version uint) (*protocol.Message, error) {
-	if err := checkVersion(version); err != nil {
-		return nil, err
-	}
-	b, err := gobEncode(responses)
-	if err != nil {
-		return nil, err
-	}
-	return newMsg(Dkls19Dkg, "8", b, version), nil
-}
-
-func decodeDkgRound8Output(m *protocol.Message) ([]simplest.OtChallengeResponse, error) {
-	if err := checkVersion(m.Version); err != nil {
-		return nil, err
-	}
-	var out []simplest.OtChallengeResponse
-	return out, gobDecode(m.Payloads[payloadKey], &out)
-}
-
-func encodeDkgRound9Output(openings []simplest.ChallengeOpening, version uint) (*protocol.Message, error) {
-	if err := checkVersion(version); err != nil {
-		return nil, err
-	}
-	b, err := gobEncode(openings)
-	if err != nil {
-		return nil, err
-	}
-	return newMsg(Dkls19Dkg, "9", b, version), nil
-}
-
-func decodeDkgRound9Output(m *protocol.Message) ([]simplest.ChallengeOpening, error) {
-	if err := checkVersion(m.Version); err != nil {
-		return nil, err
-	}
-	var out []simplest.ChallengeOpening
-	return out, gobDecode(m.Payloads[payloadKey], &out)
 }
 
 // ── DKG output (public API used by Result()) ──────────────────────────────────
@@ -298,23 +228,25 @@ func DecodeSignature(m *protocol.Message) (*curves.EcdsaSignature, error) {
 
 // ── Sign round serializers ────────────────────────────────────────────────────
 
-func encodeSignRound1Output(seed [simplest.DigestSize]byte, version uint) (*protocol.Message, error) {
+// encodeSignRound1Output serialises Alice's opening message (seed + ephemeral OT points).
+func encodeSignRound1Output(r *sign.SignRound1Output, version uint) (*protocol.Message, error) {
 	if err := checkVersion(version); err != nil {
 		return nil, err
 	}
-	b, err := gobEncode(&seed)
+	b, err := gobEncode(r)
 	if err != nil {
 		return nil, err
 	}
 	return newMsg(Dkls19Sign, "1", b, version), nil
 }
 
-func decodeSignRound1Output(m *protocol.Message) ([simplest.DigestSize]byte, error) {
+// decodeSignRound1Output deserialises Alice's opening message.
+func decodeSignRound1Output(m *protocol.Message) (*sign.SignRound1Output, error) {
 	if err := checkVersion(m.Version); err != nil {
-		return [simplest.DigestSize]byte{}, err
+		return nil, err
 	}
-	var out [simplest.DigestSize]byte
-	return out, gobDecode(m.Payloads[payloadKey], &out)
+	out := new(sign.SignRound1Output)
+	return out, gobDecode(m.Payloads[payloadKey], out)
 }
 
 func encodeSignRound2Output(r *sign.SignRound2Output, version uint) (*protocol.Message, error) {
@@ -368,6 +300,11 @@ func encodeSignature(sig *curves.EcdsaSignature, version uint) (*protocol.Messag
 
 // ── Refresh round serializers ─────────────────────────────────────────────────
 
+// Refresh round structure (3 rounds total):
+//  Alice→Bob: round 1 (addend k_A)
+//  Bob→Alice: round 2 (addend k_B + silent OT proof)
+//  Alice local: round 3 (verify OT proof, finalize — no message)
+
 func encodeRefreshRound1Output(kA curves.Scalar, version uint) (*protocol.Message, error) {
 	if err := checkVersion(version); err != nil {
 		return nil, err
@@ -406,80 +343,4 @@ func decodeRefreshRound2Output(m *protocol.Message) (*refresh.RefreshRound2Outpu
 	}
 	out := new(refresh.RefreshRound2Output)
 	return out, gobDecode(m.Payloads[payloadKey], out)
-}
-
-func encodeRefreshRound3Output(choices []simplest.ReceiversMaskedChoices, version uint) (*protocol.Message, error) {
-	if err := checkVersion(version); err != nil {
-		return nil, err
-	}
-	b, err := gobEncode(choices)
-	if err != nil {
-		return nil, err
-	}
-	return newMsg(Dkls19Refresh, "3", b, version), nil
-}
-
-func decodeRefreshRound3Output(m *protocol.Message) ([]simplest.ReceiversMaskedChoices, error) {
-	if err := checkVersion(m.Version); err != nil {
-		return nil, err
-	}
-	var out []simplest.ReceiversMaskedChoices
-	return out, gobDecode(m.Payloads[payloadKey], &out)
-}
-
-func encodeRefreshRound4Output(challenges []simplest.OtChallenge, version uint) (*protocol.Message, error) {
-	if err := checkVersion(version); err != nil {
-		return nil, err
-	}
-	b, err := gobEncode(challenges)
-	if err != nil {
-		return nil, err
-	}
-	return newMsg(Dkls19Refresh, "4", b, version), nil
-}
-
-func decodeRefreshRound4Output(m *protocol.Message) ([]simplest.OtChallenge, error) {
-	if err := checkVersion(m.Version); err != nil {
-		return nil, err
-	}
-	var out []simplest.OtChallenge
-	return out, gobDecode(m.Payloads[payloadKey], &out)
-}
-
-func encodeRefreshRound5Output(responses []simplest.OtChallengeResponse, version uint) (*protocol.Message, error) {
-	if err := checkVersion(version); err != nil {
-		return nil, err
-	}
-	b, err := gobEncode(responses)
-	if err != nil {
-		return nil, err
-	}
-	return newMsg(Dkls19Refresh, "5", b, version), nil
-}
-
-func decodeRefreshRound5Output(m *protocol.Message) ([]simplest.OtChallengeResponse, error) {
-	if err := checkVersion(m.Version); err != nil {
-		return nil, err
-	}
-	var out []simplest.OtChallengeResponse
-	return out, gobDecode(m.Payloads[payloadKey], &out)
-}
-
-func encodeRefreshRound6Output(openings []simplest.ChallengeOpening, version uint) (*protocol.Message, error) {
-	if err := checkVersion(version); err != nil {
-		return nil, err
-	}
-	b, err := gobEncode(openings)
-	if err != nil {
-		return nil, err
-	}
-	return newMsg(Dkls19Refresh, "6", b, version), nil
-}
-
-func decodeRefreshRound6Output(m *protocol.Message) ([]simplest.ChallengeOpening, error) {
-	if err := checkVersion(m.Version); err != nil {
-		return nil, err
-	}
-	var out []simplest.ChallengeOpening
-	return out, gobDecode(m.Payloads[payloadKey], &out)
 }

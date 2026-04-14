@@ -30,10 +30,10 @@ func TestSignFull(t *testing.T) {
 			alice := NewAlice(curve, sha3.New256(), aliceDkg)
 			bob := NewBob(curve, sha3.New256(), bobDkg)
 
-			aliceSeed, err := alice.Round1GenerateRandomSeed()
+			r1, err := alice.Round1GenerateRandomSeed()
 			require.NoError(t, err)
 
-			r2, err := bob.Round2Initialize(aliceSeed)
+			r2, err := bob.Round2Initialize(r1)
 			require.NoError(t, err)
 
 			r3, err := alice.Round3Sign(message, r2)
@@ -53,15 +53,26 @@ func TestMultiplySubProtocol(t *testing.T) {
 	aliceDkg, bobDkg, err := dealer.GenerateAndDeal(curve)
 	require.NoError(t, err)
 
-	sessionID := [32]byte{0x01}
+	// Expand compact silent-OT seed material into full simplest OT outputs.
+	otSessionID := [32]byte{0x01}
+	aliceOT, err := aliceDkg.SeedOtResult.ExpandReceiver(curve, otSessionID)
+	require.NoError(t, err)
+
+	pts, err := aliceDkg.SeedOtResult.EphemeralPoints(curve)
+	require.NoError(t, err)
+
+	bobOT, err := bobDkg.SeedOtResult.ExpandSender(curve, pts, otSessionID)
+	require.NoError(t, err)
+
+	sessionID := [32]byte{0x02}
 	alpha := curve.Scalar.Random(rand.Reader)
 	beta := curve.Scalar.Random(rand.Reader)
 	expected := alpha.Mul(beta)
 
-	sender, err := NewMultiplySender(aliceDkg.SeedOtResult, curve, sessionID)
+	sender, err := NewMultiplySender(aliceOT, curve, sessionID)
 	require.NoError(t, err)
 
-	receiver, err := NewMultiplyReceiver(bobDkg.SeedOtResult, curve, sessionID)
+	receiver, err := NewMultiplyReceiver(bobOT, curve, sessionID)
 	require.NoError(t, err)
 
 	r1, err := receiver.Round1Initialize(beta)

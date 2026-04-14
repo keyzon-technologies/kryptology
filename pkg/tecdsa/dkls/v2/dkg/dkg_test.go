@@ -35,22 +35,10 @@ func TestDKGFull(t *testing.T) {
 		aliceProof, err := alice.Round4VerifyAndReveal(bobProof)
 		require.NoError(t, err)
 
-		otR1, err := bob.Round5DecommitAndStartOT(aliceProof)
+		r5, err := bob.Round5DecommitAndSendOTKey(aliceProof)
 		require.NoError(t, err)
 
-		maskedChoices, err := alice.Round6OTRound2(otR1)
-		require.NoError(t, err)
-
-		challenges, err := bob.Round7OTRound3(maskedChoices)
-		require.NoError(t, err)
-
-		responses, err := alice.Round8OTRound4(challenges)
-		require.NoError(t, err)
-
-		openings, err := bob.Round9OTRound5(responses)
-		require.NoError(t, err)
-
-		require.NoError(t, alice.Round10OTRound6(openings))
+		require.NoError(t, alice.Round6FinalizeSilentOT(r5))
 
 		aliceOut := alice.Output()
 		bobOut := bob.Output()

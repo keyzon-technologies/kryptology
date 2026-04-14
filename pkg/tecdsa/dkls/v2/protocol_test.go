@@ -17,7 +17,7 @@ import (
 	"github.com/keyzon-technologies/kryptology/pkg/core/protocol"
 )
 
-// doDKG runs the full 10-round DKLS19 DKG via the protocol.Iterator interface
+// doDKG runs the 6-round Silent-OT DKLS19 DKG via the protocol.Iterator interface
 // and returns the serialised DKG result messages for Alice and Bob.
 func doDKG(t *testing.T, curve *curves.Curve) (aliceResult, bobResult *protocol.Message) {
 	t.Helper()
@@ -25,43 +25,27 @@ func doDKG(t *testing.T, curve *curves.Curve) (aliceResult, bobResult *protocol.
 	aliceDkg := NewAliceDkg(curve, Version2)
 	bobDkg := NewBobDkg(curve, Version2)
 
-	// Bob initiates (no input needed for round 1).
+	// Bob → Round1: send random seed.
 	msg, err := bobDkg.Next(nil)
 	require.NoError(t, err)
 
-	// Alice → commits to proof.
+	// Alice → Round2: commit to Schnorr proof.
 	msg, err = aliceDkg.Next(msg)
 	require.NoError(t, err)
 
-	// Bob → proves key share.
+	// Bob → Round3: prove key share.
 	msg, err = bobDkg.Next(msg)
 	require.NoError(t, err)
 
-	// Alice → verify Bob's proof, reveal her own.
+	// Alice → Round4: verify Bob's proof, reveal her own.
 	msg, err = aliceDkg.Next(msg)
 	require.NoError(t, err)
 
-	// Bob → decommit + start OT.
+	// Bob → Round5: decommit + send silent-OT key.
 	msg, err = bobDkg.Next(msg)
 	require.NoError(t, err)
 
-	// Alice → OT Round 2.
-	msg, err = aliceDkg.Next(msg)
-	require.NoError(t, err)
-
-	// Bob → OT Round 3.
-	msg, err = bobDkg.Next(msg)
-	require.NoError(t, err)
-
-	// Alice → OT Round 4.
-	msg, err = aliceDkg.Next(msg)
-	require.NoError(t, err)
-
-	// Bob → OT Round 5 (last Bob step).
-	msg, err = bobDkg.Next(msg)
-	require.NoError(t, err)
-
-	// Alice → OT Round 6 (last Alice step, no reply).
+	// Alice local Round6: finalise silent OT (no reply).
 	_, err = aliceDkg.Next(msg)
 	require.NoError(t, err)
 
@@ -188,31 +172,15 @@ func TestProtocolRefreshAndSign(t *testing.T) {
 	bobRefresh, err := NewBobRefresh(curve, bobResult, Version2)
 	require.NoError(t, err)
 
-	// Alice sends k_A.
+	// Alice → Round1: send k_A.
 	msg, err := aliceRefresh.Next(nil)
 	require.NoError(t, err)
 
-	// Bob updates his share and starts OT.
+	// Bob → Round2: update share, send k_B + silent-OT key.
 	msg, err = bobRefresh.Next(msg)
 	require.NoError(t, err)
 
-	// Alice updates her share and runs OT Round2.
-	msg, err = aliceRefresh.Next(msg)
-	require.NoError(t, err)
-
-	// Bob → OT Round3.
-	msg, err = bobRefresh.Next(msg)
-	require.NoError(t, err)
-
-	// Alice → OT Round4.
-	msg, err = aliceRefresh.Next(msg)
-	require.NoError(t, err)
-
-	// Bob → OT Round5.
-	msg, err = bobRefresh.Next(msg)
-	require.NoError(t, err)
-
-	// Alice → OT Round6 (final).
+	// Alice local Round3: update share, finalise silent OT (no reply).
 	_, err = aliceRefresh.Next(msg)
 	require.NoError(t, err)
 

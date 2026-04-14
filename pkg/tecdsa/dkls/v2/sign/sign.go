@@ -28,6 +28,7 @@ import (
 	"golang.org/x/crypto/sha3"
 
 	"github.com/keyzon-technologies/kryptology/pkg/core/curves"
+	"github.com/keyzon-technologies/kryptology/pkg/ot/base/silent"
 	"github.com/keyzon-technologies/kryptology/pkg/ot/base/simplest"
 	"github.com/keyzon-technologies/kryptology/pkg/ot/extension/kos"
 	"github.com/keyzon-technologies/kryptology/pkg/tecdsa/dkls/v2/dkg"
@@ -54,7 +55,8 @@ const multiplicationCount = 3
 // At the end of the joint computation Alice does NOT possess the signature.
 type Alice struct {
 	hash           hash.Hash
-	seedOtResults  *simplest.ReceiverOutput
+	silentOt       *silent.ReceiverOutput
+	seedOtResults  *simplest.ReceiverOutput // populated in Round1 via silent OT expansion
 	secretKeyShare curves.Scalar
 	publicKey      curves.Point
 	curve          *curves.Curve
@@ -68,7 +70,8 @@ type Bob struct {
 	Signature *curves.EcdsaSignature
 
 	hash              hash.Hash
-	seedOtResults     *simplest.SenderOutput
+	silentOt          *silent.SenderOutput
+	seedOtResults     *simplest.SenderOutput // populated in Round2 via silent OT expansion
 	secretKeyShare    curves.Scalar
 	publicKey         curves.Point
 	transcript        *merlin.Transcript
@@ -86,7 +89,7 @@ func NewAlice(curve *curves.Curve, hash hash.Hash, dkgOutput *dkg.AliceOutput) *
 	}
 	return &Alice{
 		hash:           hash,
-		seedOtResults:  dkgOutput.SeedOtResult,
+		silentOt:       dkgOutput.SeedOtResult,
 		curve:          curve,
 		secretKeyShare: dkgOutput.SecretKeyShare,
 		publicKey:      dkgOutput.PublicKey,
@@ -102,12 +105,22 @@ func NewBob(curve *curves.Curve, hash hash.Hash, dkgOutput *dkg.BobOutput) *Bob 
 	}
 	return &Bob{
 		hash:           hash,
-		seedOtResults:  dkgOutput.SeedOtResult,
+		silentOt:       dkgOutput.SeedOtResult,
 		curve:          curve,
 		secretKeyShare: dkgOutput.SecretKeyShare,
 		publicKey:      dkgOutput.PublicKey,
 		transcript:     merlin.NewTranscript("DKLS19_Sign_v2"),
 	}
+}
+
+// SignRound1Output is Alice's opening message to Bob.
+type SignRound1Output struct {
+	// Seed is Alice's random contribution to the joint session ID.
+	Seed [simplest.DigestSize]byte
+
+	// EphemeralPoints are Alice's Silent OT ephemeral {A_i} points, one per base OT.
+	// Bob uses these to expand his compact SenderOutput into a full simplest.SenderOutput.
+	EphemeralPoints [][]byte
 }
 
 // SignRound2Output is Bob's initial message to Alice.
@@ -139,28 +152,68 @@ type SignRound3Output struct {
 }
 
 // Round1GenerateRandomSeed is Alice's first move.
-// She samples a random 32-byte seed to contribute to the joint session ID.
-func (alice *Alice) Round1GenerateRandomSeed() ([simplest.DigestSize]byte, error) {
+// She samples a random 32-byte seed, expands her compact silent-OT state into the
+// full simplest.ReceiverOutput needed by KOS, and sends both the seed and the
+// BatchSize ephemeral points {A_i} to Bob.
+func (alice *Alice) Round1GenerateRandomSeed() (*SignRound1Output, error) {
 	seed := [simplest.DigestSize]byte{}
 	if _, err := rand.Read(seed[:]); err != nil {
-		return seed, errors.Wrap(err, "DKLS19 sign Round1: generating Alice seed")
+		return nil, errors.Wrap(err, "DKLS19 sign Round1: generating Alice seed")
 	}
 	alice.transcript.AppendMessage([]byte("dkls19_sign_sid_alice"), seed[:])
-	return seed, nil
+
+	// Derive OT expansion session ID from the transcript at this point (before Bob's
+	// seed is known). Bob will extract the same label in Round2 after appending aliceSeed,
+	// so both sides end up with an identical session ID.
+	otSessionID := [simplest.DigestSize]byte{}
+	copy(otSessionID[:], alice.transcript.ExtractBytes([]byte("dkls19_silent_ot_expand"), simplest.DigestSize))
+
+	// Expand compact silent-OT seed material → full simplest.ReceiverOutput for KOS.
+	var err error
+	alice.seedOtResults, err = alice.silentOt.ExpandReceiver(alice.curve, otSessionID)
+	if err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round1: expand silent OT receiver")
+	}
+
+	// Compute ephemeral {A_i = a_i·G + w_i·B} and encode for Bob.
+	pts, err := alice.silentOt.EphemeralPoints(alice.curve)
+	if err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round1: compute ephemeral points")
+	}
+	encoded, err := silent.EncodeEphemeralPoints(pts)
+	if err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round1: encode ephemeral points")
+	}
+	return &SignRound1Output{Seed: seed, EphemeralPoints: encoded}, nil
 }
 
 // Round2Initialize is Bob's initial message (Protocol 3, Bob's steps 1–3).
-// Bob samples his nonce k_B, computes D_B = k_B · G, prepares the two
-// multiplication sub-protocol instances, and returns all data to Alice.
-func (bob *Bob) Round2Initialize(aliceSeed [simplest.DigestSize]byte) (*SignRound2Output, error) {
+// Bob decodes Alice's ephemeral points, expands his compact silent-OT state into the
+// full simplest.SenderOutput needed by KOS, samples his nonce k_B, computes D_B = k_B · G,
+// prepares the three multiplication sub-protocol instances, and returns all data to Alice.
+func (bob *Bob) Round2Initialize(r1 *SignRound1Output) (*SignRound2Output, error) {
 	bobSeed := [simplest.DigestSize]byte{}
 	if _, err := rand.Read(bobSeed[:]); err != nil {
 		return nil, errors.Wrap(err, "DKLS19 sign Round2: generating Bob seed")
 	}
-	bob.transcript.AppendMessage([]byte("dkls19_sign_sid_alice"), aliceSeed[:])
+	bob.transcript.AppendMessage([]byte("dkls19_sign_sid_alice"), r1.Seed[:])
+
+	// Derive OT expansion session ID at the same transcript state as Alice (before bobSeed).
+	otSessionID := [simplest.DigestSize]byte{}
+	copy(otSessionID[:], bob.transcript.ExtractBytes([]byte("dkls19_silent_ot_expand"), simplest.DigestSize))
+
+	// Decode Alice's ephemeral points and expand compact silent-OT seed material.
+	pts, err := silent.DecodeEphemeralPoints(bob.curve, r1.EphemeralPoints)
+	if err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round2: decode ephemeral points")
+	}
+	bob.seedOtResults, err = bob.silentOt.ExpandSender(bob.curve, pts, otSessionID)
+	if err != nil {
+		return nil, errors.Wrap(err, "DKLS19 sign Round2: expand silent OT sender")
+	}
+
 	bob.transcript.AppendMessage([]byte("dkls19_sign_sid_bob"), bobSeed[:])
 
-	var err error
 	sessionID := [simplest.DigestSize]byte{}
 
 	copy(sessionID[:], bob.transcript.ExtractBytes([]byte("dkls19_multiply_recv_0"), simplest.DigestSize))
