@@ -15,8 +15,8 @@ This fork is focused exclusively on cryptography for the following networks:
 | Solana, Liquid Network | Ed25519 | Threshold EdDSA (FROST) |
 | P-256 | NIST P-256 | Standard ECDSA |
 
-BLS12377, BLS12381, and all dependent packages (BLS signatures, BBS+, accumulators)
-have been removed — they are not required by any of the target networks.
+BLS12377, BLS12381, Mina Protocol (Pallas/Pasta), NEM, Gennaro DKG, and all dependent
+packages have been removed — they are not required by any of the target networks.
 
 ## What changed in this fork
 
@@ -33,6 +33,11 @@ have been removed — they are not required by any of the target networks.
 - Cryptographic Accumulators (`pkg/accumulator/`) — depended on BLS12381.
 - BLS variants of secret sharing (`pkg/sharing/v1/bls12381*`).
 - `PairingScalar` and `PairingPoint` interfaces — no remaining implementations.
+- Mina Protocol Schnorr signatures (`pkg/signatures/schnorr/mina/`) and Pallas curve (`pkg/core/curves/pallas_curve.go`) — not used by BTC, EVM, or Solana.
+- Pasta field arithmetic (`pkg/core/curves/native/pasta/`) — only required by Pallas/Mina.
+- NEM/XEM Ed25519-Keccak signatures (`pkg/signatures/schnorr/nem/`) — irrelevant to target networks.
+- Gennaro DKG (`pkg/dkg/gennaro/`) and Gennaro 2-party DKG (`pkg/dkg/gennaro2p/`) — not used by DKLS19 or FROST.
+- Verifiable Encryption (`pkg/verenc/`) — Cramer-Shoup and ElGamal schemes not required by threshold signing protocols.
 
 ### DKLS19 v2 — [`pkg/tecdsa/dkls/v2`](pkg/tecdsa/dkls/v2)
 
@@ -91,8 +96,7 @@ Abstraction in [pkg/core/curves/curve.go](pkg/core/curves/curve.go).
 |-------|------|---------|
 | secp256k1 (K-256) | [k256_curve.go](pkg/core/curves/k256_curve.go) | Bitcoin, EVM |
 | Ed25519 | [ed25519_curve.go](pkg/core/curves/ed25519_curve.go) | Solana, Liquid Network |
-| NIST P-256 | [p256_curve.go](pkg/core/curves/p256_curve.go) | TLS, FIDO2 |
-| Pallas | [pallas_curve.go](pkg/core/curves/pallas_curve.go) | Mina Protocol |
+| NIST P-256 | [p256_curve.go](pkg/core/curves/p256_curve.go) | Serialization/TECDSA internals |
 
 ### Protocols
 
@@ -112,7 +116,6 @@ Abstraction in [pkg/core/curves/curve.go](pkg/core/curves/curve.go).
   - [Shamir](pkg/sharing/v1/shamir.go)
   - [Pedersen](pkg/sharing/v1/pedersen.go)
   - [Feldman](pkg/sharing/v1/feldman.go)
-- [Verifiable Encryption](pkg/verenc)
 - [ZKP Schnorr](pkg/zkp/schnorr)
 
 ## References
